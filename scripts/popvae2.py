@@ -12,7 +12,7 @@ parser.add_argument("--out",default="vae",
                     help="path for saving output")
 parser.add_argument("--patience",default=20,type=int,
                     help="training patience. default=10")
-parser.add_argument("--max_epochs",default=100,type=int,
+parser.add_argument("--max_epochs",default=200,type=int,
                     help="max training epochs. default=100")
 parser.add_argument("--batch_size",default=32,type=int,
                     help="batch size. default=32")
@@ -26,7 +26,7 @@ parser.add_argument("--save_weights",default=False,action="store_true",
                     stored to out+weights.hdf5.")
 parser.add_argument("--seed",default=None,type=int,help="random seed. \
                                                          default: None")
-parser.add_argument("--train_prop",default=0.8,type=float,
+parser.add_argument("--train_prop",default=0.9,type=float,
                     help="proportion of samples to use for training \
                           (vs validation). default:0.8")
 parser.add_argument("--nlayers",default=4,type=int,
@@ -47,6 +47,11 @@ parser.add_argument("--latent_dim",default=2,type=int,
                     help="N latent dimensions to fit. default: 2")
 parser.add_argument("--PCA",default=False,action="store_true",
                     help="Run PCA on the derived allele count matrix in scikit-allel.")
+parser.add_argument("--PCA_scaler",default="Patterson",type=str,
+                    help="How should allele counts be scaled prior to running the PCA?. \
+                    Options: 'None' (mean-center the data but do not scale sites), \
+                              'Patterson' (mean-center then apply the scaling described in Eq 3 of Patterson et al. 2006, Plos Gen)\
+                              default: Patterson. See documentation for allel.pca for further information.")
 parser.add_argument("--sample_data",
                     help="(optional) Path to a tab-delimited sample data file. \
                           Must contain all sample IDs in the genotypes \
@@ -70,6 +75,7 @@ prediction_freq=args.prediction_freq
 max_SNPs=args.max_SNPs
 latent_dim=args.latent_dim
 PCA=args.PCA
+PCA_scaler=args.PCA_scaler
 nlayers=args.nlayers
 width=args.width
 population=args.population
@@ -196,7 +202,7 @@ vae = Model(input_seq, output_seq, name='vae')
 
 #get loss as xent_loss+kl_loss
 reconstruction_loss = keras.losses.binary_crossentropy(input_seq,output_seq)
-reconstruction_loss *= traingen.shape[1] #this scaling appears in https://keras.io/examples/variational_autoencoder/ but not eg https://blog.keras.io/building-autoencoders-in-keras.html, so ... ? Need to figure out what's up with the output units for the two parts of the loss.
+reconstruction_loss *= traingen.shape[1] #this scaling appears in https://keras.io/examples/variational_autoencoder/ but not eg https://blog.keras.io/building-autoencoders-in-keras.html, so ... ? Seems to be necessary for good performance, but risks Inf loss at initialization for large snp matrices. Need to figure out what's up with the output units for the two parts of the loss.
 kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
 kl_loss = K.sum(kl_loss, axis=-1)
 kl_loss *= -0.5
@@ -239,8 +245,8 @@ def saveLDpos(encoder,predgen,samples,batch_size,epoch,frequency):
 print_predictions=keras.callbacks.LambdaCallback(
          on_epoch_end=lambda epoch,
          logs:saveLDpos(encoder=encoder,
-                        predgen=testgen,
-                        samples=testsamples,
+                        predgen=dc,
+                        samples=samples,
                         batch_size=batch_size,
                         epoch=epoch,
                         frequency=prediction_freq))
@@ -274,7 +280,8 @@ if not save_weights:
 if PCA:
     t1=time.time()
     print("running PCA")
-    pca=allel.pca(np.transpose(dc),scaler=None,n_components=20)
+    pcdata=np.transpose(dc)
+    pca=allel.pca(pcdata,scaler=PCA_scaler,n_components=20)
     pca=pd.DataFrame(pca[0])
     colnames=['PC'+str(x+1) for x in range(20)]
     pca.columns=colnames
