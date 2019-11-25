@@ -50,6 +50,10 @@ parser.add_argument("--max_SNPs",default=None,type=int,
                           to run. default: None")
 parser.add_argument("--latent_dim",default=2,type=int,
                     help="N latent dimensions to fit. default: 2")
+parser.add_argument("--prune_iter",default=1,type=int,
+                    help="size of windows for LD pruning. default: 1")
+parser.add_argument("--prune_size",default=500,type=int,
+                    help="size of windows for LD pruning. default: 500")
 parser.add_argument("--PCA",default=False,action="store_true",
                     help="Run PCA on the derived allele count matrix in scikit-allel.")
 parser.add_argument("--PCA_scaler",default="Patterson",type=str,
@@ -79,6 +83,8 @@ out=args.out
 prediction_freq=args.prediction_freq
 max_SNPs=args.max_SNPs
 latent_dim=args.latent_dim
+prune_iter=args.prune_iter
+prune_size=args.prune_size
 PCA=args.PCA
 PCA_scaler=args.PCA_scaler
 nlayers=args.nlayers
@@ -95,21 +101,39 @@ if not seed==None:
     tensorflow.set_random_seed(seed)
 
 print("\nloading genotypes")
-if infile.endswith('.zarr'):
-    callset = zarr.open_group(infile, mode='r')
-    gt = callset['calldata/GT']
-    gen = allel.GenotypeArray(gt[:])
-    samples = callset['samples'][:]
-elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
-    vcf=allel.read_vcf(infile,log=sys.stderr)
-    gen=allel.GenotypeArray(vcf['calldata/GT'])
-    pos=vcf['variants/POS']
-    samples=vcf['samples']
-elif infile.endswith('.popvae.hdf5'):
-    h5=h5py.File(infile,'r')
-    dc=np.array(h5['derived_counts'])
-    samples=np.array(h5['samples'])
-    h5.close()
+files = os.listdir(infile)
+print(files)
+count=0
+for i in files[16:17]:
+    print("reading in chromosome:" + i)
+    if i.endswith('.zarr'):
+        if count==0:
+            #print(os.path.join(infile,i))
+            callset = zarr.open_group(os.path.join(infile,i), mode='r')
+            gt = callset['calldata/GT']
+            #print(callset.tree(expand=True))
+            gen = allel.GenotypeArray(gt[:])
+            #print("genotype shape:")
+            #print(gen.shape)
+            samples = callset['samples'][:]
+            count=count+1
+        else:
+            callset = zarr.open_group(os.path.join(infile,i), mode='r')
+            gt = callset['calldata/GT']
+            gTemp = allel.GenotypeArray(gt)
+            gen = gen.concatenate([gTemp], axis=0)
+            #print("genotype shape:")
+            #print(gen.shape)
+    elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
+        vcf=allel.read_vcf(infile,log=sys.stderr)
+        gen=allel.GenotypeArray(vcf['calldata/GT'])
+        pos=vcf['variants/POS']
+        samples=vcf['samples']
+    elif infile.endswith('.popvae.hdf5'):
+        h5=h5py.File(infile,'r')
+        dc=np.array(h5['derived_counts'])
+        samples=np.array(h5['samples'])
+        h5.close()
 
 if not infile.endswith('.popvae.hdf5'):
     print("counting alleles")
@@ -135,6 +159,18 @@ if not infile.endswith('.popvae.hdf5'):
     for i in tqdm(range(np.shape(dc)[1])):
         indmiss=missingness[:,i]
         dc[indmiss,i]=np.random.binomial(2,af[indmiss])
+
+    def ld_prune(gn, n_iter, size, step, threshold):
+        for i in range(n_iter):
+            loc_unlinked = allel.locate_unlinked(gn, size=size, step=step, threshold=threshold)
+            n = np.count_nonzero(loc_unlinked)
+            n_remove = gn.shape[0] - n
+            print('iteration', i+1, 'retaining', n, 'removing', n_remove, 'variants')
+            gn = gn.compress(loc_unlinked, axis=0)
+        return gn
+
+    print("pruning for LD")
+    dc = ld_prune(dc, prune_iter, prune_size, step=200, threshold=0.1)
 
     dc=np.transpose(dc)
     dc=dc*0.5 #0=homozygous ancestral, 0.5=heterozygous, 1=homogyzous derived
