@@ -104,6 +104,7 @@ print("\nloading genotypes")
 files = os.listdir(infile)
 print(files)
 count=0
+#adding an unnecessary comment for github tests
 for i in files[16:17]:
     print("reading in chromosome:" + i)
     if i.endswith('.zarr'):
