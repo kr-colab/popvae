@@ -201,6 +201,9 @@ if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered p
             return gn
         dc = ld_prune(dc, prune_iter, prune_size, step=200, threshold=0.1)
 
+    #prep for analysis
+    dc=np.transpose(dc)
+    dc=dc*0.5 #0=homozygous reference, 0.5=heterozygous, 1=homozygous alternate
 
     #save hdf5 for reanalysis
     if save_allele_counts and not infile.endswith('.locator.hdf5'):
