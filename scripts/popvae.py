@@ -1,13 +1,27 @@
-import keras, numpy as np, os, allel, pandas as pd,time,tensorflow
+import logging
+logging.getLogger('tensorflow').disabled = True #suppressing tensorflow warnings bc of the boatload of deprecation warnings (which: this is meant for 1.15, the definitive v1 release, and won't run at all on v2, so why the fuck does anyone need these? Also, the first six things I tried didn't work so WTF google.)
+import keras, numpy as np, os, allel, pandas as pd, time
 import zarr, subprocess, h5py, re, sys, os, argparse
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from keras.models import Sequential
+from keras import layers
+from keras.layers.core import Lambda
+from keras import backend as K
+from keras.models import Model
+import tensorflow
 
 parser=argparse.ArgumentParser()
 parser.add_argument("--infile",
-                    help="path to input genotypes in vcf (.vcf | .vcf.gz),\
-                          zarr, or popvae's HDF5 format (as output when \
-                          save_allele_counts=True)")
+                    help="path to input genotypes in vcf (.vcf | .vcf.gz), \
+                          zarr, or .popvae.hdf5 format. Zarr files should be as produced \
+                          by scikit-allel's `vcf_to_zarr( )` function. `.popvae.hdf5`\
+                          files store filtered genotypes from previous runs (i.e. \
+                          from --save_allele_counts).")
+parser.add_argument("--indir",default=None,
+                    help="path to a directory of VCF or zarr files.\
+                          Genotypes from all .vcf or .zarr \
+                          files will be read in and concatenated.")
 parser.add_argument("--out",default="vae",
                     help="path for saving output")
 parser.add_argument("--patience",default=20,type=int,
@@ -50,8 +64,13 @@ parser.add_argument("--max_SNPs",default=None,type=int,
                           to run. default: None")
 parser.add_argument("--latent_dim",default=2,type=int,
                     help="N latent dimensions to fit. default: 2")
+parser.add_argument("--prune_LD",default=False,action="store_true",
+                    help="Prune sites for linkage disequilibrium before fitting the model? \
+                    See --prune_iter and --prune_size to adjust parameters. \
+                    By default this will use a 500-SNP rolling window to drop \
+                    one of each pair of sites with r**2 > 0.1 .")
 parser.add_argument("--prune_iter",default=1,type=int,
-                    help="size of windows for LD pruning. default: 1")
+                    help="number of iterations to run LD thinning. default: 1")
 parser.add_argument("--prune_size",default=500,type=int,
                     help="size of windows for LD pruning. default: 500")
 parser.add_argument("--PCA",default=False,action="store_true",
@@ -70,6 +89,7 @@ parser.add_argument('--population',default=None,type=str,
 args=parser.parse_args()
 
 infile=args.infile
+indir=args.indir
 sample_data=args.sample_data
 save_allele_counts=args.save_allele_counts
 patience=args.patience
@@ -83,6 +103,7 @@ out=args.out
 prediction_freq=args.prediction_freq
 max_SNPs=args.max_SNPs
 latent_dim=args.latent_dim
+prune_LD=args.prune_LD
 prune_iter=args.prune_iter
 prune_size=args.prune_size
 PCA=args.PCA
@@ -101,34 +122,41 @@ if not seed==None:
     tensorflow.set_random_seed(seed)
 
 print("\nloading genotypes")
-files = os.listdir(infile)
-print(files)
-count=0
-#adding an unnecessary comment for github tests
-for i in files[16:17]:
-    print("reading in chromosome:" + i)
-    if i.endswith('.zarr'):
-        if count==0:
-            #print(os.path.join(infile,i))
-            callset = zarr.open_group(os.path.join(infile,i), mode='r')
-            gt = callset['calldata/GT']
-            #print(callset.tree(expand=True))
-            gen = allel.GenotypeArray(gt[:])
-            #print("genotype shape:")
-            #print(gen.shape)
-            samples = callset['samples'][:]
-            count=count+1
-        else:
-            callset = zarr.open_group(os.path.join(infile,i), mode='r')
-            gt = callset['calldata/GT']
-            gTemp = allel.GenotypeArray(gt)
-            gen = gen.concatenate([gTemp], axis=0)
-            #print("genotype shape:")
-            #print(gen.shape)
+if not indir==None:        #if infile is a directory, read in genotypes from all zarr or vcf files and concatenate the genotype matrices before filtering
+    files=os.listdir(indir)
+    files=[x for x in files if not x.startswith(".")]
+    print("reading genotypes from zarr and vcf files in directory "+indir)
+    for i in files:
+        print("reading file "+i)
+        if i.endswith('.zarr'):
+            if i==files[0]:
+                callset = zarr.open_group(os.path.join(indir,i), mode='r')
+                gt = callset['calldata/GT']
+                gen = allel.GenotypeArray(gt[:])
+                samples = callset['samples'][:]
+            else:
+                callset = zarr.open_group(os.path.join(indir,i), mode='r')
+                gt = callset['calldata/GT']
+                gTemp = allel.GenotypeArray(gt)
+                gen = gen.concatenate([gTemp], axis=0)
+        elif i.endswith('.vcf'):
+            if i==files[0]:
+                vcf=allel.read_vcf(os.path.join(indir,i),log=sys.stderr)
+                gen=allel.GenotypeArray(vcf['calldata/GT'])
+                samples=vcf['samples']
+            else:
+                vcf=allel.read_vcf(os.path.join(indir,i),log=sys.stderr)
+                gTemp=allel.GenotypeArray(vcf['calldata/GT'])
+                gen = gen.concatenate([gTemp], axis=0)
+else: #read in single files
+    if infile.endswith('.zarr'):
+        callset = zarr.open_group(infile, mode='r')
+        gt = callset['calldata/GT']
+        gen = allel.GenotypeArray(gt[:])
+        samples = callset['samples'][:]
     elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
         vcf=allel.read_vcf(infile,log=sys.stderr)
         gen=allel.GenotypeArray(vcf['calldata/GT'])
-        pos=vcf['variants/POS']
         samples=vcf['samples']
     elif infile.endswith('.popvae.hdf5'):
         h5=h5py.File(infile,'r')
@@ -136,7 +164,7 @@ for i in files[16:17]:
         samples=np.array(h5['samples'])
         h5.close()
 
-if not infile.endswith('.popvae.hdf5'):
+if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered popvae.hdf5 formatted data
     print("counting alleles")
     ac_all=gen.count_alleles() #count of alleles per snp
     ac=gen.to_allele_counts() #count of alleles per snp per individual
@@ -161,26 +189,26 @@ if not infile.endswith('.popvae.hdf5'):
         indmiss=missingness[:,i]
         dc[indmiss,i]=np.random.binomial(2,af[indmiss])
 
-    def ld_prune(gn, n_iter, size, step, threshold):
-        for i in range(n_iter):
-            loc_unlinked = allel.locate_unlinked(gn, size=size, step=step, threshold=threshold)
-            n = np.count_nonzero(loc_unlinked)
-            n_remove = gn.shape[0] - n
-            print('iteration', i+1, 'retaining', n, 'removing', n_remove, 'variants')
-            gn = gn.compress(loc_unlinked, axis=0)
-        return gn
+    if prune_LD:
+        print("pruning genotypes for linkage disequilibrium")
+        def ld_prune(gn, n_iter, size, step, threshold):
+            for i in range(n_iter):
+                loc_unlinked = allel.locate_unlinked(gn, size=size, step=step, threshold=threshold)
+                n = np.count_nonzero(loc_unlinked)
+                n_remove = gn.shape[0] - n
+                print('iteration', i+1, 'retaining', n, 'removing', n_remove, 'variants')
+                gn = gn.compress(loc_unlinked, axis=0)
+            return gn
+        dc = ld_prune(dc, prune_iter, prune_size, step=200, threshold=0.1)
 
-    print("pruning for LD")
-    dc = ld_prune(dc, prune_iter, prune_size, step=200, threshold=0.1)
-
-    dc=np.transpose(dc)
-    dc=dc*0.5 #0=homozygous ancestral, 0.5=heterozygous, 1=homogyzous derived
-    print(dc.shape)
 
     #save hdf5 for reanalysis
     if save_allele_counts and not infile.endswith('.locator.hdf5'):
         print("saving derived counts for reanalysis")
-        outfile=h5py.File(infile+".popvae.hdf5", "w")
+        if prune_LD:
+            outfile=h5py.File(infile+".LDpruned.popvae.hdf5", "w")
+        else:
+            outfile=h5py.File(infile+".popvae.hdf5", "w")
         outfile.create_dataset("derived_counts", data=dc)
         outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #note this requires h5py v 2.10.0
         outfile.close()
@@ -210,13 +238,6 @@ else:
 print('running on '+str(dc.shape[1])+" SNPs")
 
 #load model
-from keras.models import Sequential
-from keras import layers
-from keras.layers.core import Lambda
-from keras import backend as K
-from keras.models import Model
-import keras
-
 def sampling(args):
     z_mean, z_log_var = args
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
@@ -356,7 +377,10 @@ ax1.set_xlabel("Epoch")
 ax1.legend()
 fig.savefig(out+"_history",bbox_inches='tight')
 
-if not population==None:
+timeout=np.array([vaetime,pcatime])
+np.savetxt(X=timeout,fname=out+"_runtimes.txt")
+
+if not population==None: #if sample data and population labels are supplied, print a scatterplot of VAE and PCA output
     locs=pd.read_csv(sample_data,sep="\t")
     locs['id']=locs['sampleID']
     locs.set_index('id',inplace=True)
@@ -401,6 +425,8 @@ if not population==None:
 # nlayers=4
 # width=128
 # parallel=False
+# prune_iter=1
+# prune_size=500
 
 ### code for debugging tensors / keras loss functions
 # import tensorflow as tf ## need to run these lines on startup
