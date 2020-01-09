@@ -1,15 +1,16 @@
-import logging
-logging.getLogger('tensorflow').disabled = True #suppressing tensorflow warnings bc of the boatload of deprecation warnings (which: this is meant for 1.15, the definitive v1 release, and won't run at all on v2, so why the fuck does anyone need these? Also, the first six things I tried didn't work so WTF google.)
-import keras, numpy as np, os, allel, pandas as pd, time
-import zarr, subprocess, h5py, re, sys, os, argparse
-from matplotlib import pyplot as plt
-from tqdm import tqdm
-from keras.models import Sequential
-from keras import layers
-from keras.layers.core import Lambda
-from keras import backend as K
-from keras.models import Model
-import tensorflow
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore",category=DeprecationWarning)
+    import keras, numpy as np, os, allel, pandas as pd, time
+    import zarr, subprocess, h5py, re, sys, os, argparse
+    from matplotlib import pyplot as plt
+    from tqdm import tqdm
+    from keras.models import Sequential
+    from keras import layers
+    from keras.layers.core import Lambda
+    from keras import backend as K
+    from keras.models import Model
+    import tensorflow
 
 parser=argparse.ArgumentParser()
 parser.add_argument("--infile",
@@ -26,7 +27,7 @@ parser.add_argument("--out",default="vae",
                     help="path for saving output")
 parser.add_argument("--patience",default=20,type=int,
                     help="training patience. default=10")
-parser.add_argument("--max_epochs",default=200,type=int,
+parser.add_argument("--max_epochs",default=500,type=int,
                     help="max training epochs. default=100")
 parser.add_argument("--batch_size",default=32,type=int,
                     help="batch size. default=32")
@@ -43,8 +44,8 @@ parser.add_argument("--seed",default=None,type=int,help="random seed. \
 parser.add_argument("--train_prop",default=0.9,type=float,
                     help="proportion of samples to use for training \
                           (vs validation). default:0.8")
-parser.add_argument("--nlayers",default=4,type=int,
-                    help='number of hidden layers. default=4.')
+parser.add_argument("--nlayers",default=6,type=int,
+                    help='number of hidden layers. default=6.')
 parser.add_argument("--width",default=128,type=int,
                     help='nodes per hidden layer. default=128')
 parser.add_argument("--gpu_number",default='0',type=str,
@@ -75,6 +76,8 @@ parser.add_argument("--prune_size",default=500,type=int,
                     help="size of windows for LD pruning. default: 500")
 parser.add_argument("--PCA",default=False,action="store_true",
                     help="Run PCA on the derived allele count matrix in scikit-allel.")
+parser.add_argument("--n_pc_axes",default=20,type=int,
+                    help="Number of PC axes to save in output. default: 20")
 parser.add_argument("--PCA_scaler",default="Patterson",type=str,
                     help="How should allele counts be scaled prior to running the PCA?. \
                           Options: 'None' (mean-center the data but do not scale sites), \
@@ -113,6 +116,7 @@ width=args.width
 population=args.population
 parallel=args.parallel
 n_gpus=args.n_gpus
+n_pc_axes=args.n_pc_axes
 
 if not parallel:
     os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
@@ -164,7 +168,7 @@ else: #read in single files
         samples=np.array(h5['samples'])
         h5.close()
 
-if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered popvae.hdf5 formatted data
+if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered hdf5
     print("counting alleles")
     ac_all=gen.count_alleles() #count of alleles per snp
     ac=gen.to_allele_counts() #count of alleles per snp per individual
@@ -259,7 +263,7 @@ encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
 
 #decoder
 decoder_input=layers.Input(shape=(latent_dim,),name='z_sampling')
-x=layers.Dense(width,activation="elu")(decoder_input)
+x=layers.Dense(width,activation="linear")(decoder_input)#was elu
 for i in range(nlayers-1):
     x=layers.Dense(width,activation="elu")(x)
 output=layers.Dense(traingen.shape[1],activation="sigmoid")(x) #hard sigmoid seems natural here but appears to lead to more left-skewed decoder outputs.
@@ -267,7 +271,6 @@ decoder=Model(decoder_input,output,name='decoder')
 
 #end-to-end vae
 output_seq = decoder(encoder(input_seq)[2])
-binned_output_seq = keras.backend.round(output_seq*2)/2
 vae = Model(input_seq, output_seq, name='vae')
 
 #get loss as xent_loss+kl_loss
@@ -357,9 +360,9 @@ if PCA:
     pcdata=np.transpose(dc)
     t1=time.time()
     print("running PCA")
-    pca=allel.pca(pcdata,scaler=PCA_scaler,n_components=20)
+    pca=allel.pca(pcdata,scaler=PCA_scaler,n_components=n_pc_axes)
     pca=pd.DataFrame(pca[0])
-    colnames=['PC'+str(x+1) for x in range(20)]
+    colnames=['PC'+str(x+1) for x in range(n_pc_axes)]
     pca.columns=colnames
     pca['sampleID']=samples
     pca.to_csv(out+"_pca.txt",index=False,sep="\t")
@@ -418,7 +421,7 @@ if not population==None: #if sample data and population labels are supplied, pri
 # max_epochs=1000
 # seed=12345
 # save_weights=False
-# train_prop=1
+# train_prop=0.9
 # gpu_number='0'
 # prediction_freq=2
 # out="out/pabu"
@@ -430,6 +433,7 @@ if not population==None: #if sample data and population labels are supplied, pri
 # parallel=False
 # prune_iter=1
 # prune_size=500
+# PCA_scaler="Patterson"
 
 ### code for debugging tensors / keras loss functions
 # import tensorflow as tf ## need to run these lines on startup
@@ -444,3 +448,45 @@ if not population==None: #if sample data and population labels are supplied, pri
 # b=tensorflow.convert_to_tensor(np.array([0.5,0,1,1]),np.float32)
 # l=keras.backend.sum(keras.backend.binary_crossentropy(a,b),axis=-1)
 # l.numpy()
+
+# ##########################################################################
+# ################ test area for walking the latent space ##################
+# ##########################################################################
+# z_sample=np.array([[np.mean(pred[0]),np.mean(pred[1])]])
+# z_sample=np.array([[pred[0][0],pred[1][0]]])
+# z_sample=np.tile(z_sample,1).reshape(1,2) #wtf is up with the dimensionality here
+# pred[[0,1]]
+# pgen=decoder.predict(pred[[0,1]],batch_size=1)
+# np.max(pgen[9])
+#
+# plt.hist(pgen[9][traingen[9,:]==1])
+#
+# fig,(ax1,ax2)=plt.subplots(1,2)
+# ax1.hist(pgen)
+# #ax1.set_yscale('log')
+# ax1.set_ylim(1,4e3)
+# ax1.set_title('Generated')
+#
+# ax2.hist(traingen[0,:])
+# #ax2.set_yscale('log')
+# ax2.set_ylim(1,4e3)
+# ax2.set_title('True')
+#
+#
+# p2=[]
+# for x in pgen:
+#     if x<0.2:
+#         p2.append(0)
+#     elif x>=0.2 and x<=0.65:
+#         p2.append(0.5)
+#     elif x>0.65:
+#         p2.append(1)
+#
+# np.histogram(pgen)
+# np.histogram(p2)
+# np.histogram(traingen[0,:],3)
+#
+#
+# ###############################################################
+# ###############################################################
+# ###############################################################
