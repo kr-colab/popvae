@@ -19,10 +19,6 @@ parser.add_argument("--infile",
                           by scikit-allel's `vcf_to_zarr( )` function. `.popvae.hdf5`\
                           files store filtered genotypes from previous runs (i.e. \
                           from --save_allele_counts).")
-parser.add_argument("--indir",default=None,
-                    help="path to a directory of VCF or zarr files.\
-                          Genotypes from all .vcf or .zarr \
-                          files will be read in and concatenated.")
 parser.add_argument("--out",default="vae",
                     help="path for saving output")
 parser.add_argument("--patience",default=20,type=int,
@@ -38,7 +34,7 @@ parser.add_argument("--save_allele_counts",default=False,action="store_true",
                     relevant path to --infile.")
 parser.add_argument("--save_weights",default=False,action="store_true",
                     help="if --save_weights is called, model weights will be \
-                    stored to out+weights.hdf5.")
+                    stored to `out`+weights.hdf5.")
 parser.add_argument("--seed",default=None,type=int,help="random seed. \
                                                          default: None")
 parser.add_argument("--train_prop",default=0.9,type=float,
@@ -49,14 +45,10 @@ parser.add_argument("--nlayers",default=6,type=int,
 parser.add_argument("--width",default=128,type=int,
                     help='nodes per hidden layer. default=128')
 parser.add_argument("--gpu_number",default='0',type=str,
-                    help='gpu number to use for training (see e.g. gpustat).\
+                    help='gpu number to use for training (try `gpustat` to get GPU numbers).\
                           Use ` --gpu_number "" ` to run on CPU, and  \
                           ` --parallel --gpu_number 0,1,2,3` to split batches across 4 GPUs.\
                           default: 0')
-parser.add_argument('--parallel',default=False,action="store_true",
-                    help="NOTE: currently broken, working on it. fit model using multiple GPUs?")
-parser.add_argument('--n_gpus',default=2,type=int,
-                    help="NOTE: currently broken, working on it. n gpus to use for parallel training runs. default: 2")
 parser.add_argument("--prediction_freq",default=5,type=int,
                     help="print predictions during training every \
                           --prediction_freq epochs. default: 10")
@@ -68,12 +60,12 @@ parser.add_argument("--latent_dim",default=2,type=int,
 parser.add_argument("--prune_LD",default=False,action="store_true",
                     help="Prune sites for linkage disequilibrium before fitting the model? \
                     See --prune_iter and --prune_size to adjust parameters. \
-                    By default this will use a 500-SNP rolling window to drop \
+                    By default this will use a 50-SNP rolling window to drop \
                     one of each pair of sites with r**2 > 0.1 .")
 parser.add_argument("--prune_iter",default=1,type=int,
                     help="number of iterations to run LD thinning. default: 1")
-parser.add_argument("--prune_size",default=500,type=int,
-                    help="size of windows for LD pruning. default: 500")
+parser.add_argument("--prune_size",default=50,type=int,
+                    help="size of windows for LD pruning. default: 50")
 parser.add_argument("--PCA",default=False,action="store_true",
                     help="Run PCA on the derived allele count matrix in scikit-allel.")
 parser.add_argument("--n_pc_axes",default=20,type=int,
@@ -82,18 +74,10 @@ parser.add_argument("--PCA_scaler",default="Patterson",type=str,
                     help="How should allele counts be scaled prior to running the PCA?. \
                           Options: 'None' (mean-center the data but do not scale sites), \
                           'Patterson' (mean-center then apply the scaling described in Eq 3 of Patterson et al. 2006, Plos Gen)\
-                          default: Patterson. See documentation for allel.pca for further information.")
-parser.add_argument("--sample_data",
-                    help="(optional) Path to a tab-delimited sample data file. \
-                          Must contain all sample IDs in the genotypes \
-                          file in a column named 'sampleID'.")
-parser.add_argument('--population',default=None,type=str,
-                    help="(optional) Population ID column name (from --sample_data) for plotting VAE+PCA predictions.")
+                          default: Patterson. See documentation of allel.pca for further information.")
 args=parser.parse_args()
 
 infile=args.infile
-indir=args.indir
-sample_data=args.sample_data
 save_allele_counts=args.save_allele_counts
 patience=args.patience
 batch_size=args.batch_size
@@ -113,60 +97,30 @@ PCA=args.PCA
 PCA_scaler=args.PCA_scaler
 nlayers=args.nlayers
 width=args.width
-population=args.population
-parallel=args.parallel
-n_gpus=args.n_gpus
 n_pc_axes=args.n_pc_axes
 
-if not parallel:
-    os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
+
+os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
 
 if not seed==None:
     np.random.seed(seed)
     tensorflow.set_random_seed(seed)
 
 print("\nloading genotypes")
-if not indir==None:        #if infile is a directory, read in genotypes from all zarr or vcf files and concatenate the genotype matrices before filtering
-    files=os.listdir(indir)
-    files=[x for x in files if not x.startswith(".")]
-    print("reading genotypes from zarr and vcf files in directory "+indir)
-    for i in files:
-        print("reading file "+i)
-        if i.endswith('.zarr'):
-            if i==files[0]:
-                callset = zarr.open_group(os.path.join(indir,i), mode='r')
-                gt = callset['calldata/GT']
-                gen = allel.GenotypeArray(gt[:])
-                samples = callset['samples'][:]
-            else:
-                callset = zarr.open_group(os.path.join(indir,i), mode='r')
-                gt = callset['calldata/GT']
-                gTemp = allel.GenotypeArray(gt)
-                gen = gen.concatenate([gTemp], axis=0)
-        elif i.endswith('.vcf'):
-            if i==files[0]:
-                vcf=allel.read_vcf(os.path.join(indir,i),log=sys.stderr)
-                gen=allel.GenotypeArray(vcf['calldata/GT'])
-                samples=vcf['samples']
-            else:
-                vcf=allel.read_vcf(os.path.join(indir,i),log=sys.stderr)
-                gTemp=allel.GenotypeArray(vcf['calldata/GT'])
-                gen = gen.concatenate([gTemp], axis=0)
-else: #read in single files
-    if infile.endswith('.zarr'):
-        callset = zarr.open_group(infile, mode='r')
-        gt = callset['calldata/GT']
-        gen = allel.GenotypeArray(gt[:])
-        samples = callset['samples'][:]
-    elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
-        vcf=allel.read_vcf(infile,log=sys.stderr)
-        gen=allel.GenotypeArray(vcf['calldata/GT'])
-        samples=vcf['samples']
-    elif infile.endswith('.popvae.hdf5'):
-        h5=h5py.File(infile,'r')
-        dc=np.array(h5['derived_counts'])
-        samples=np.array(h5['samples'])
-        h5.close()
+if infile.endswith('.zarr'):
+    callset = zarr.open_group(infile, mode='r')
+    gt = callset['calldata/GT']
+    gen = allel.GenotypeArray(gt[:])
+    samples = callset['samples'][:]
+elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
+    vcf=allel.read_vcf(infile,log=sys.stderr)
+    gen=allel.GenotypeArray(vcf['calldata/GT'])
+    samples=vcf['samples']
+elif infile.endswith('.popvae.hdf5'):
+    h5=h5py.File(infile,'r')
+    dc=np.array(h5['derived_counts'])
+    samples=np.array(h5['samples'])
+    h5.close()
 
 if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered hdf5
     print("counting alleles")
@@ -282,10 +236,6 @@ kl_loss *= -0.5
 vae_loss = K.mean(reconstruction_loss + kl_loss)
 vae.add_loss(vae_loss)
 
-if parallel:
-    print("splitting batches across "+str(n_gpus)+" GPUs")
-    vae=keras.utils.multi_gpu_model(vae,n_gpus) #seems to be broken? appears to load correctly on stdout but gpustat only showing one GPU active...
-
 vae.compile(optimizer='adam')
 
 #callbacks
@@ -383,110 +333,30 @@ ax1.set_xlabel("Epoch")
 ax1.legend()
 fig.savefig(out+"_history",bbox_inches='tight')
 
-timeout=np.array([vaetime,pcatime])
-np.savetxt(X=timeout,fname=out+"_runtimes.txt")
-
-if not population==None: #if sample data and population labels are supplied, print a scatterplot of VAE and PCA output
-    locs=pd.read_csv(sample_data,sep="\t")
-    locs['id']=locs['sampleID']
-    locs.set_index('id',inplace=True)
-    locs=locs.reindex(np.array(samples)) #sort loc table so samples are in same order as genotype samples
-    if not all([locs['sampleID'][x]==samples[x] for x in range(len(samples))]): #check that all sample names are present
-        print("sample ordering failed! Check that sample IDs match the VCF.")
-        sys.exit()
-    pred.columns=['LD1','LD2','sampleID']
-    pred=pred.merge(locs,on='sampleID')
-    pca=pca.merge(locs,on='sampleID')
-    fig,[ax1,ax2]=plt.subplots(nrows=1,ncols=2)
-    fig.set_figwidth(6)
-    fig.set_figheight(2.5)
-    fig.tight_layout()
-    ax1.scatter(pred['LD1'],pred['LD2'],c=pd.factorize(pred[population])[0])
-    ax1.set_title("VAE")
-    ax1.set_xlabel("LD1")
-    ax1.set_ylabel("LD2")
-    ax2.scatter(pca['PC1'],pca['PC2'],c=pd.factorize(pred[population])[0])
-    ax2.set_title("PCA")
-    ax2.set_xlabel("PC1")
-    ax2.set_ylabel("PC2")
-    fig.savefig(out+"_LDpreds.pdf",bbox_inches='tight')
+if PCA:
+    timeout=np.array([vaetime,pcatime])
+    np.savetxt(X=timeout,fname=out+"_runtimes.txt")
 
 # ###debugging parameters
 # os.chdir("/Users/cj/popvae/")
-# infile="data/pabu/pabu_c85h60.vcf"
-# sample_data="data/pabu/pabu_full_data.txt"
+# infile="data/hgdp/hgdp_chr1_1e5snps_seed42.popvae.hdf5"
+# sample_data="data/hgdp/hgdp_sample_data.txt"
 # save_allele_counts=True
-# patience=200
-# batch_size=32
-# max_epochs=1000
+# patience=20
+# batch_size=64
+# max_epochs=300
 # seed=12345
 # save_weights=False
 # train_prop=0.9
 # gpu_number='0'
 # prediction_freq=2
-# out="out/pabu"
+# out="out/test"
 # latent_dim=2
-# max_SNPs=None
+# max_SNPs=10000
 # PCA=True
-# nlayers=4
+# nlayers=6
 # width=128
 # parallel=False
 # prune_iter=1
 # prune_size=500
 # PCA_scaler="Patterson"
-
-### code for debugging tensors / keras loss functions
-# import tensorflow as tf ## need to run these lines on startup
-# tf.enable_eager_execution()
-#
-# a=tensorflow.convert_to_tensor(np.array([1,1,1,1]),np.float32)
-# b=tensorflow.convert_to_tensor(np.array([0.5,0,1,1]),np.float32)
-# l=keras.losses.binary_crossentropy(a,b)
-# l.numpy()
-#
-# a=tensorflow.convert_to_tensor(np.array([1,1,1,1]),np.float32)
-# b=tensorflow.convert_to_tensor(np.array([0.5,0,1,1]),np.float32)
-# l=keras.backend.sum(keras.backend.binary_crossentropy(a,b),axis=-1)
-# l.numpy()
-
-# ##########################################################################
-# ################ test area for walking the latent space ##################
-# ##########################################################################
-# z_sample=np.array([[np.mean(pred[0]),np.mean(pred[1])]])
-# z_sample=np.array([[pred[0][0],pred[1][0]]])
-# z_sample=np.tile(z_sample,1).reshape(1,2) #wtf is up with the dimensionality here
-# pred[[0,1]]
-# pgen=decoder.predict(pred[[0,1]],batch_size=1)
-# np.max(pgen[9])
-#
-# plt.hist(pgen[9][traingen[9,:]==1])
-#
-# fig,(ax1,ax2)=plt.subplots(1,2)
-# ax1.hist(pgen)
-# #ax1.set_yscale('log')
-# ax1.set_ylim(1,4e3)
-# ax1.set_title('Generated')
-#
-# ax2.hist(traingen[0,:])
-# #ax2.set_yscale('log')
-# ax2.set_ylim(1,4e3)
-# ax2.set_title('True')
-#
-#
-# p2=[]
-# for x in pgen:
-#     if x<0.2:
-#         p2.append(0)
-#     elif x>=0.2 and x<=0.65:
-#         p2.append(0.5)
-#     elif x>0.65:
-#         p2.append(1)
-#
-# np.histogram(pgen)
-# np.histogram(p2)
-# np.histogram(traingen[0,:],3)
-#
-#
-# ###############################################################
-# ###############################################################
-# ###############################################################
