@@ -9,7 +9,7 @@ from keras import backend as K
 from keras.models import Model
 import tensorflow
 
-os.chdir("/Users/cj/popvae/")
+os.chdir("/home/cbattey2/popvae/")
 infile="data/hgdp/hgdp_chr1_1e5snps_seed42.popvae.hdf5"
 sample_data="data/hgdp/hgdp_sample_data.txt"
 save_allele_counts=True
@@ -21,7 +21,7 @@ save_weights=False
 train_prop=0.9
 gpu_number='0'
 prediction_freq=2
-out="out/test"
+out="out/decoder_test"
 latent_dim=2
 max_SNPs=None
 PCA=True
@@ -50,12 +50,20 @@ if not max_SNPs==None:
 
 print("running train/test splits")
 ninds=dc.shape[0]
-train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
-test=np.array([x for x in range(ninds) if x not in train])
-traingen=dc[train,:]
-testgen=dc[test,:]
-trainsamples=samples[train]
-testsamples=samples[test]
+if train_prop==1:
+    train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
+    test=train
+    traingen=dc[train,:]
+    testgen=dc[test,:]
+    trainsamples=samples[train]
+    testsamples=samples[test]
+else:
+    train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
+    test=np.array([x for x in range(ninds) if x not in train])
+    traingen=dc[train,:]
+    testgen=dc[test,:]
+    trainsamples=samples[train]
+    testsamples=samples[test]
 
 #################### load network #####################
 def sampling(args):
@@ -131,8 +139,11 @@ t2=time.time()
 vaetime=t2-t1
 print("VAE run time: "+str(vaetime)+" seconds")
 
+#load best weights
+vae.load_weights(out+"_weights.hdf5")
+
 #plot VAE latent space
-sample_data=pd.read_csv("/Users/cj/popvae/data/hgdp/hgdp_sample_data.txt",sep="\t")
+sample_data=pd.read_csv("data/hgdp/hgdp_sample_data.txt",sep="\t")
 pred=encoder.predict(dc)[0]
 pred=pd.DataFrame(pred)
 pred.columns=['LD1','LD2']
@@ -141,53 +152,57 @@ pred=pred.merge(sample_data,on="sampleID")
 plt.scatter(pred['LD1'],pred['LD2'],c=pd.factorize(pred['region'])[0])
 
 ##################### decoder tests ######################
-#get generated genotypes for all real samples
-vae.load_weights(out+"_weights.hdf5")
-pgen=decoder.predict(encoder.predict(dc)[0])
-pgen.shape
-dc.shape
+#get generated genotypes for all real samples by sampling from the latent space
+pgen=decoder.predict(encoder.predict(dc)[2]) #encoder.predict() returns [mean,sd,sample] for normal distributions describing sample locations in latent space, so [0] is fixed but [2] is stochastic given a set of weights.
 
-def binGenotypes(pgen,a,b):
+##binning genotypes by grid searching for the best cutoffs -- deprecated
+# def binGenotypes(pgen,a,b):
+#     out=np.copy(pgen)
+#     out[out<a]=0
+#     out[(out>=a) & (out<=b)]=0.5 #required syntax on these multiple booleans sucks.
+#     out[out>b]=1
+#     return out
+#
+# def gridSearchCutoffs(pgen,dc,return_all_loss=False,arange=[0,0.5],brange=[0.5,1],step=0.05):
+#     loss=[];params=[]
+#     asearch=np.arange(arange[0],arange[1],step)
+#     bsearch=np.arange(brange[0],brange[1],step)
+#     for a in tqdm(asearch):
+#         for b in bsearch:
+#             #print(str(a)+" "+str(b))
+#             bingen=binGenotypes(pgen,a,b)
+#             loss.append(sum(sum(abs(bingen-dc))))
+#             params.append((a,b))
+#     opt_params=params[np.argmin(loss)]
+#     if return_all_loss:
+#         return opt_params,loss,params
+#     else:
+#         return opt_params
+#
+# opt_params=gridSearchCutoffs(pgen,dc,step=0.05)
+#
+# bingen=binGenotypes(pgen,opt_params[0],opt_params[1])
+
+#binning with binomial draws (seems to work better, but make sure real genotypes are scaled to 0-2 instead of 0-1)
+def binomialBinGenotypes(pgen):
     out=np.copy(pgen)
-    out[out<a]=0
-    out[(out>=a) & (out<=b)]=0.5 #required syntax on these multiple booleans sucks.
-    out[out>b]=1
+    for i in range(out.shape[0]):
+        out[i,:]=np.random.binomial(2,out[i,:])
     return out
 
-
-
-def gridSearchCutoffs(pgen,dc,return_all_loss=False,arange=[0,0.5],brange=[0.5,1],step=0.05):
-    loss=[];params=[]
-    asearch=np.arange(arange[0],arange[1],step)
-    bsearch=np.arange(brange[0],brange[1],step)
-    for a in tqdm(asearch):
-        for b in bsearch:
-            #print(str(a)+" "+str(b))
-            bingen=binGenotypes(pgen,a,b)
-            loss.append(sum(sum(abs(bingen-dc))))
-            params.append((a,b))
-    opt_params=params[np.argmin(loss)]
-    if return_all_loss:
-        return opt_params,loss,params
-    else:
-        return opt_params
-
-opt_params=gridSearchCutoffs(pgen,dc,step=0.05)
-
-bingen=binGenotypes(pgen,opt_params[0],opt_params[1])
+bingen=binomialBinGenotypes(pgen)
 
 #comparing PCA of real vs generated genotypes
-realpca=allel.pca(np.transpose(dc),scaler=None,n_components=2)
-genpca=allel.pca(np.transpose(bingen),scaler=None,n_components=2)[0] #run a separate PCA something causing an issue with the Patterson scaler (invariant sites in generated genotypes?)
+realpca=allel.pca(np.transpose(dc)*2,scaler="Patterson",n_components=2) #note the *2 here to rescale genotypes to 0/1/2. need this to match binomial(2,...) output on binning generated genotypes.
+#genpca=allel.pca(np.transpose(bingen),scaler=None,n_components=2)[0] #run a separate PCA (something causing an issue with the Patterson scaler (invariant sites in generated genotypes?))
 genpca=realpca[1].transform(np.transpose(bingen)) #project generated coordinates into the "real" PC space
 sampledata=pd.read_csv("data/hgdp/hgdp_sample_data.txt",sep="\t")
 df=pd.DataFrame(np.hstack((realpca[0],genpca)))
 df.columns=['realPC1','realPC2','genPC1','genPC2']
 df['sampleID']=samples
 df=df.merge(sampledata,on='sampleID')
-df.to_csv('/Users/cj/Desktop/pca_decoder_test.csv',sep=",",index=False)
+df.to_csv('pca_decoder_test.csv',sep=",",index=False)
 
-#compare real and generated genotypes in PC space
 fig,[ax1,ax2]=plt.subplots(nrows=1,ncols=2)
 fig.set_figwidth(6)
 fig.set_figheight(2.75)
@@ -200,7 +215,8 @@ ax2.set_title("generated")
 ax2.set_xlabel("PC1")
 ax2.set_ylabel("PC2")
 fig.tight_layout()
-fig.savefig('/Users/cj/popvae/fig/PCA_decoder_comp.pdf',bbox_inches='tight')
+fig.savefig('fig/PCA_decoder_comp_mpl.pdf',bbox_inches='tight')
+
 
 #convert generated genotype matrix to ped format for running Admixture
 #for (???) reasons the ped won't run in admixture directly, but does run after conversion to binary via `plink --make-bed --file <<outpath.ped>>`
@@ -211,9 +227,9 @@ def genotypes_to_ped(bingen,sample_IDs,outpath=None,):
         for j in range(bingen.shape[1]):
             if bingen[i,j]==0:
                 dat[j]=[1,1]
-            elif bingen[i,j]==0.5:
-                dat[j]=[1,2]
             elif bingen[i,j]==1:
+                dat[j]=[1,2]
+            elif bingen[i,j]==2:
                 dat[j]=[2,2]
         dat=np.concatenate(dat)
         genotypes[i,:]=dat
@@ -234,12 +250,12 @@ def genotypes_to_ped(bingen,sample_IDs,outpath=None,):
         mapout.to_csv(outpath+".map",sep=" ",index=False,header=False)
     return pedout,mapout
 
-pedout,mapout=genotypes_to_ped(bingen,outpath="/Users/cj/popvae/admixture/hgdp_genotypes_1e5snps_generated",sample_IDs=df['sampleID'])
-pedout,mapout=genotypes_to_ped(dc,outpath="/Users/cj/popvae/admixture/hgdp_genotypes_1e5snps",sample_IDs=df['sampleID'])
+pedout,mapout=genotypes_to_ped(bingen,outpath="/home/cbattey2/popvae/admixture/hgdp_genotypes_1e5snps_generated",sample_IDs=df['sampleID'])
+pedout,mapout=genotypes_to_ped(dc*2,outpath="/home/cbattey2/popvae/admixture/hgdp_genotypes_1e5snps",sample_IDs=df['sampleID'])
 
 #convert to bed files
 print("converting to .bed")
-subprocess.check_output('cd /Users/cj/popvae/admixture/; \
+subprocess.check_output('cd /home/cbattey2/popvae/admixture/; \
                          \
                          plink --noweb --make-bed \
                          --file hgdp_genotypes_1e5snps_generated \
@@ -251,11 +267,44 @@ subprocess.check_output('cd /Users/cj/popvae/admixture/; \
 
 #run Admixture
 print("running Admixture")
-subprocess.check_output('cd /Users/cj/popvae/admixture/; \
+subprocess.check_output('cd /home/cbattey2/popvae/admixture/; \
                          admixture hgdp_genotypes_1e5snps_generated.bed -s 54321 7 -j10; \
                          admixture hgdp_genotypes_1e5snps.bed -s 54321 7 -j10;',
                         shell=True,stderr=True)
 
+
+
+#generate a set of genotypes from latent positions characteristic of the population X
+pops=np.unique(sample_data['population'])
+for pop in pops:
+    pred=encoder.predict(dc)[0]
+    pred=pd.DataFrame(pred)
+    pred.columns=['LD1','LD2']
+    pred['sampleID']=samples
+    pred=pred.merge(sample_data,on="sampleID")
+
+    sanLD1=np.mean(pred[pred['population']==pop]['LD1'])
+    sanLD1sd=np.std(pred[pred['population']==pop]['LD1'])
+    sanLD2=np.mean(pred[pred['population']==pop]['LD2'])
+    sanLD2sd=np.std(pred[pred['population']==pop]['LD2'])
+
+    newLD1=np.random.normal(sanLD1,sanLD1sd,10)
+    newLD2=np.random.normal(sanLD2,sanLD2sd,10)
+    newLD=np.array([newLD1,newLD2])
+
+    pgen=decoder.predict(np.transpose(newLD))
+    bingen=binomialBinGenotypes(pgen)
+
+    genpca=realpca[1].transform(np.transpose(bingen)) #project generated coordinates into the "real" PC space
+    genpca=pd.DataFrame(genpca)
+
+    fig,ax=plt.subplots(1,1)
+    ax.scatter(df['realPC1'],df['realPC2'],c=pd.factorize(df['region'])[0])
+    ax.scatter(genpca[0],genpca[1],c='red')
+    fig.tight_layout()
+    fig.set_figheight(2.5)
+    fig.set_figwidth(3)
+    fig.savefig("fig/decoder_population_PCAs/"+pop+".pdf")
 
 
 
