@@ -1,12 +1,14 @@
 <img src="popvae_logo.svg" width="100%">
 
-Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE). 
+Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE)
 
 # Overview
-popVAE fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".  Here's a figure describing the basic setup: 
+popVAE fits a VAE to a set up input genotypes. A VAE is essentially a pair of neural networks which seeks to first compress an input (here, genotypes) into a low-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder". Here's a figure describing the basic setup: 
 ![network_figure](https://github.com/cjbattey/popvae/blob/master/vae_network.png)
 
-By passing genotypes to a trained encoder we can visualize the distribution of samples in latent space -- like a PCA, but with a user-defined number of dimensions and using a completely nonlinear framework. Similarly by passing coordinates to the decoder we can create new artificial genotypes characteristic of a given sample or population.
+By passing genotypes to a trained encoder we can visualize the relative differentiation among samples (more similar genotypes should be close to each other in latent space). This is similar to PCA, t-SNE, or UMAP, but with a user-defined number of dimensions and using a completely nonlinear framework. By passing latent space coordinates to the decoder we can also create new artificial genotypes characteristic of a given sample or population. 
+
+A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at: <TBD>
 
 # Install
 The `setup.py` script should take care of all dependencies for you. Clone this repo then install with 
@@ -56,10 +58,6 @@ Note there are two main groups of samples corresponding to eastern and western s
 
 # Generating Artificial Genotypes
 We're still working on the best way to allow users to generate artificial genotypes from trained models, since this tends to be a more interactive task than just fitting the model and visualizing the latent space. For now we have included a working example of fitting a VAE, generating artificial genotypes, and analyzing them with PCA and Admixture clustering at `scripts/popvae_decoder_HGDP_tests.py`. Stay tuned for updates. 
-
-# Pronunciation Guide
-
-<img src="popbae.png" width="35%">
 
 
 
