@@ -1,8 +1,8 @@
-# popvae
+# popVAE
 Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE)
 
 # Overview
-popvae fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".  Here's a figure describing the basic setup: 
+popVAE fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".  Here's a figure describing the basic setup: 
 ![network_figure](https://github.com/cjbattey/popvae/blob/master/vae_network.png)
 
 By passing genotypes to a trained encoder we can visualize the distribution of samples in latent space -- like a PCA, but with a user-defined number of dimensions and using a completely nonlinear framework. Similarly by passing coordinates to the decoder we can create new artificial genotypes characteristic of a given sample or population.
@@ -12,7 +12,7 @@ The `setup.py` script should take care of all dependencies for you. Clone this r
 `python setup.py install`
 
 # Run
-popvae requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a test dataset of around 1,000 genome-wide SNPs from migratory Painted Buntings (from this paper: http://cjbattey.com/papers/pabu_amnat_final.pdf). Fit a model to this data with: 
+popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a test dataset of around 1,000 genome-wide SNPs from migratory Painted Buntings (from this paper: http://cjbattey.com/papers/pabu_amnat_final.pdf). Fit a model to this data with: 
   
   ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42```
 
@@ -30,7 +30,7 @@ At default settings popvae will output 4 files:
 `pabu_test_training_preds.txt` -- estimated latent coordinates output during model training, stored every `--prediction_freq` epochs.   
 
 # Validation and plotting
-Plot popvae's latent_coords output just like a genotype PCA. For the test data a simple scatter plot can be produced in R with:  
+Plot popVAE's latent_coords output just like a genotype PCA. For the test data a simple scatter plot can be produced in R with:  
 ``` 
 library(ggplot2);library(data.table)
 setwd("~/popvae/")
