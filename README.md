@@ -1,4 +1,4 @@
-<img src="popvae_logo.png" width="100%">
+<img src="popvae_logo.svg" width="100%">
 
 # popVAE
 Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE). 
