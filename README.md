@@ -59,7 +59,7 @@ ggplot(data=pd,aes(x=LD1,y=LD2,col=Longitude))+
 It should look something like this:  
 ![pabu_example_plot](https://github.com/cjbattey/popvae/blob/master/data/pabu/pabu_test_plot.png)
 
-Note there are two main groups of samples corresponding to eastern and western sampling localities, as well as group of slighlty intermediate samples in the western group. For this dataset these are allopatric (the big gap) and parapatric (the cline in western samples) breeding populations with different migratory strategies (see http://cjbattey.com/papers/pabu_amnat_final.pdf to compare these results with PCA and STRUCTURE). 
+Note there are two main groups of samples corresponding to eastern and western sampling localities, as well as group of somewhat intermediate samples in the western group. These are allopatric (the big gap) and parapatric (the cline in western samples) breeding populations with different migratory strategies (see http://cjbattey.com/papers/pabu_amnat_final.pdf to compare these results with PCA and STRUCTURE). 
 
 # Generating Artificial Genotypes
 We're still working on the best way to allow users to generate artificial genotypes from trained models, since this tends to be a more interactive task than just fitting the model and visualizing the latent space. For now we have included a working example of fitting a VAE, generating artificial genotypes, and analyzing them with PCA and Admixture clustering at `scripts/popvae_decoder_HGDP_tests.py`. Stay tuned for updates. 
