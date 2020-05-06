@@ -21,7 +21,7 @@ parser.add_argument("--infile",
                           from --save_allele_counts).")
 parser.add_argument("--out",default="vae",
                     help="path for saving output")
-parser.add_argument("--patience",default=50,type=int,
+parser.add_argument("--patience",default=100,type=int,
                     help="training patience. default=50")
 parser.add_argument("--max_epochs",default=500,type=int,
                     help="max training epochs. default=500")
