@@ -1,5 +1,7 @@
 # popVAE
-Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE)
+Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE). 
+
+<img src="popbae.png" width="30%" margin-left="40%">
 
 # Overview
 popVAE fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".  Here's a figure describing the basic setup: 
