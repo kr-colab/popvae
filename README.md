@@ -1,14 +1,15 @@
 # popvae
 Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE)
 
+# Overview
+popvae fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".  Here's a figure describing the basic setup: 
+![network_figure](https://github.com/cjbattey/popvae/blob/master/vae_network.png)
+
+By passing genotypes to a trained encoder we can visualize the distribution of samples in latent space -- like a PCA, but with a user-defined number of dimensions and using a completely nonlinear framework. Similarly by passing coordinates to the decoder we can create new artificial genotypes characteristic of a given sample or population.
+
 # Install
 The `setup.py` script should take care of all dependencies for you. Clone this repo then install with 
 `python setup.py install`
-
-# Overview
-popvae fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".   
-
-By passing genotypes to a trained encoder we can visualize the distribution of samples in latent space -- like a PCA, but with a user-defined number of dimensions and using a completely nonlinear framework. Similarly by passing coordinates to the decoder we can create new artificial genotypes characteristic of a given sample or population.
 
 # Run
 popvae requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a test dataset of around 1,000 genome-wide SNPs from migratory Painted Buntings (from this paper: http://cjbattey.com/papers/pabu_amnat_final.pdf). Fit a model to this data with: 
@@ -51,6 +52,9 @@ It should look something like this:
 ![pabu_example_plot](https://github.com/cjbattey/popvae/blob/master/data/pabu/pabu_test_plot.png)
 
 Note there are two main groups of samples corresponding to eastern and western sampling localities, as well as group of slighlty intermediate samples in the western group. For this dataset these are allopatric (the big gap) and parapatric (the cline in western samples) breeding populations with different migratory strategies (see http://cjbattey.com/papers/pabu_amnat_final.pdf to compare these results with PCA and STRUCTURE). 
+
+# Generating Artificial Genotypes
+We're still working on the best way to allow users to generate artificial genotypes from trained models, since this tends to be a more interactive task than just fitting the model and visualizing the latent space. For now we have included a working example of fitting a VAE, generating artificial genotypes, and analyzing them with PCA and Admixture clustering at `scripts/popvae_decoder_HGDP_tests.py`. Stay tuned for updates. 
 
 
 
