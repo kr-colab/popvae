@@ -46,7 +46,7 @@ ggplot(data=pd,aes(x=LD1,y=LD2,col=Longitude))+
   geom_point()
 ```
 It should look something like this:  
-(https://cjbattey.github.com/popvae/data/pabu/pabu_test_plot.png)
+(https://github.com/cjbattey/popvae/blob/master/data/pabu/pabu_test_plot.png)
 
 Note there are two main groups of samples corresponding to eastern and western sampling localities, as well as group of slighlty intermediate samples in the western group. For this dataset these are allopatric (the big gap) and parapatric (the cline in western samples) breeding populations with different migratory strategies (see http://cjbattey.com/papers/pabu_amnat_final.pdf to compare these results with PCA and STRUCTURE). 
 
