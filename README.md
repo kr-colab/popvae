@@ -1,9 +1,6 @@
 <img src="popvae_logo.svg" width="100%">
 
-# popVAE
 Dimensionality reduction for population genetic data with a Variational Autoencoder (VAE). 
-
-<img src="popbae.png" width="30%">
 
 # Overview
 popVAE fits a VAE to a set up input genotypes. This is essentially a pair of neural networks which seek to first compress an individual's genotype to a location in an n-dimensional latent space and then to recreate the input data. We call the network that translates genotypes to latent space coordinates the "encoder", and the network that translates latent space coordinates back to a genotype vector the "decoder".  Here's a figure describing the basic setup: 
@@ -59,6 +56,10 @@ Note there are two main groups of samples corresponding to eastern and western s
 
 # Generating Artificial Genotypes
 We're still working on the best way to allow users to generate artificial genotypes from trained models, since this tends to be a more interactive task than just fitting the model and visualizing the latent space. For now we have included a working example of fitting a VAE, generating artificial genotypes, and analyzing them with PCA and Admixture clustering at `scripts/popvae_decoder_HGDP_tests.py`. Stay tuned for updates. 
+
+# Pronunciation Guide
+
+<img src="popbae.png" width="35%">
 
 
 
