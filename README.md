@@ -13,7 +13,11 @@ A manuscript describing popVAE's methods and testing it on several empirical dat
 
 # Install
 The `setup.py` script should take care of all dependencies for you. Clone this repo then install with 
-`python setup.py install`
+
+```
+cd popvae
+python setup.py install
+```
 
 # Run
 popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a test dataset of around 1,000 genome-wide SNPs from migratory Painted Buntings (from this paper: http://cjbattey.com/papers/pabu_amnat_final.pdf). Fit a model to this data with: 
