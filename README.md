@@ -28,10 +28,10 @@ This model should fit in less than a minute on a regular laptop CPU. For running
 
 # Output
 At default settings popvae will output 4 files:    
-`pabu_test_latent_coords.txt` --  coordinates for all samples in latent space (.  
+`pabu_test_latent_coords.txt` --  best-fit latent space coordinates by sample.  
 `pabu_test_history.txt` -- training and validation loss by epoch.  
 `pabu_test_history.pdf` -- a plot of training and validation loss by epoch.  
-`pabu_test_training_preds.txt` -- estimated latent coordinates output during model training, stored every `--prediction_freq` epochs.   
+`pabu_test_training_preds.txt` -- latent coordinates output during model training, stored every `--prediction_freq` epochs.   
 
 # Parameters
 Many hyperparameters and filtering options can be adjusted at the command line.
