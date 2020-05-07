@@ -3,7 +3,7 @@
 </p>
 
 # Summary
-popVAE fits a variational autoencoder (VAE) to a sample of genotypes. A VAE is essentially a pair of neural networks that first encodes an input as a probability distribution in a low-dimensional latent space and then attempts to recreate the input given a location in latent space. The "encoder" is the network that goes from data to latent space, and the "decoder" is the network from latent space to generated data. 
+popVAE fits a variational autoencoder (VAE) to a sample of genotypes. A VAE is essentially a pair of neural networks that first encode an input as a probability distribution in a low-dimensional latent space and then attempt to recreate the input given a location in latent space. The "encoder" is the network that goes from data to latent space, and the "decoder" is the network from latent space to generated data. 
 
 For genotype data we can use the encoder to visualize differentiation among a set of samples, and the decoder to generate artifical genotypes similar to a given sample or population. 
 
