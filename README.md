@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/popvae_logo.svg" width="40%">
+  <img src="img/popvae_logo_2-02.svg" width="35%">
 </p>
 
 # Summary
