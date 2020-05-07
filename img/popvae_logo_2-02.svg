@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 22.1.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 436.2 336.8" style="enable-background:new 0 0 436.2 336.8;" xml:space="preserve">
+<style type="text/css">
+	.st0{fill:#FFFFFF;stroke:#000000;stroke-width:4;stroke-miterlimit:10;}
+	.st1{fill:none;stroke:#000000;stroke-width:4;stroke-miterlimit:10;}
+	.st2{clip-path:url(#SVGID_2_);fill:none;stroke:#000000;stroke-width:4;stroke-miterlimit:10;}
+	.st3{clip-path:url(#SVGID_2_);}
+	.st4{font-family:'CourierNewPS-BoldItalicMT';}
+	.st5{font-size:84px;}
+	.st6{font-family:'CourierNewPS-BoldMT';}
+	.st7{fill:none;stroke:#000000;stroke-miterlimit:10;}
+</style>
+<g>
+	<defs>
+		<rect id="SVGID_1_" y="21.2" width="436.2" height="305.7"/>
+	</defs>
+	<clipPath id="SVGID_2_">
+		<use xlink:href="#SVGID_1_"  style="overflow:visible;"/>
+	</clipPath>
+	<path class="st2" d="M588.1,223c-12.9,0.4-32.7-0.4-54.4-8.4c-47.5-17.5-59.2-58.4-89.6-58.4c-11,0-27.2,5.2-47.2,32.1"/>
+	<path class="st2" d="M489.7,201.1c-0.9,1.5-16,25.3-44.8,25.6c-18.9,0.2-33.3-14-46.4-26.4c-13.2-12.5-14.3-22.3-28.8-32
+		c-9.4-6.3-18.7-9.1-25-10.5"/>
+	<path class="st2" d="M388.9,201.1c-5.8,7.4-16.5,18.5-33.1,23.9c-3.2,1.1-6.4,1.8-9.3,2.3"/>
+	<g class="st3">
+		<text transform="matrix(1 0 0 1 71.9532 87.0446)"><tspan x="0" y="0" class="st4 st5">pop</tspan><tspan x="151.2" y="0" class="st6 st5">VAE</tspan></text>
+	</g>
+	<rect x="104.2" y="110.8" class="st2" width="229.6" height="173.6"/>
+	<circle class="st3" cx="136.5" cy="150.4" r="5"/>
+	<circle class="st3" cx="141.5" cy="160.6" r="5"/>
+	<circle class="st3" cx="130.5" cy="173.3" r="5"/>
+	<circle class="st3" cx="157" cy="187.6" r="5"/>
+	<circle class="st3" cx="148.3" cy="176.8" r="5"/>
+	<circle class="st3" cx="153.3" cy="150.4" r="5"/>
+	<circle class="st3" cx="173.1" cy="145.9" r="5"/>
+	<circle class="st3" cx="162" cy="139.4" r="5"/>
+	<circle class="st3" cx="226.6" cy="143.7" r="5"/>
+	<circle class="st3" cx="240" cy="159.5" r="5"/>
+	<circle class="st3" cx="277.5" cy="145.4" r="5"/>
+	<circle class="st3" cx="282.6" cy="150.1" r="5"/>
+	<circle class="st3" cx="297.3" cy="142.4" r="5"/>
+	<circle class="st3" cx="283.4" cy="125.4" r="5"/>
+	<circle class="st3" cx="292.3" cy="159.5" r="5"/>
+	<circle class="st3" cx="278.9" cy="160.6" r="5"/>
+	<circle class="st3" cx="266.1" cy="150.4" r="5"/>
+	<circle class="st3" cx="254.6" cy="143.7" r="5"/>
+	<circle class="st3" cx="250.2" cy="157.4" r="5"/>
+	<circle class="st3" cx="247.9" cy="168.3" r="5"/>
+	<circle class="st3" cx="244" cy="175.6" r="5"/>
+	<circle class="st3" cx="264.6" cy="172.5" r="5"/>
+	<circle class="st3" cx="255.9" cy="169.6" r="5"/>
+	<circle class="st3" cx="277.5" cy="172.8" r="5"/>
+	<circle class="st3" cx="262.3" cy="158.8" r="5"/>
+	<circle class="st3" cx="228" cy="155.2" r="5"/>
+	<circle class="st3" cx="221.5" cy="164.5" r="5"/>
+	<circle class="st3" cx="221.9" cy="179.3" r="5"/>
+	<circle class="st3" cx="233" cy="177.8" r="5"/>
+	<circle class="st3" cx="240.1" cy="189.2" r="5"/>
+	<circle class="st3" cx="150.3" cy="235" r="5"/>
+	<circle class="st3" cx="139.6" cy="241.2" r="5"/>
+	<circle class="st3" cx="154.4" cy="253.7" r="5"/>
+	<circle class="st3" cx="159.1" cy="239.2" r="5"/>
+	<circle class="st3" cx="152" cy="247.8" r="5"/>
+	<circle class="st3" cx="143.3" cy="249.8" r="5"/>
+	<circle class="st3" cx="146.7" cy="255.4" r="5"/>
+	<circle class="st3" cx="156.5" cy="265.2" r="5"/>
+	<circle class="st3" cx="298.1" cy="268.1" r="5"/>
+	<circle class="st3" cx="300.1" cy="260.4" r="5"/>
+	<circle class="st3" cx="308.4" cy="260.4" r="5"/>
+	<circle class="st3" cx="304.2" cy="250.7" r="5"/>
+	<circle class="st3" cx="246.7" cy="231.5" r="5"/>
+	<circle class="st3" cx="255" cy="235.3" r="5"/>
+	<circle class="st3" cx="247.8" cy="238.8" r="5"/>
+	<circle class="st3" cx="259.5" cy="244.5" r="5"/>
+	<path class="st2" d="M-150.3,223.8c12.9,0.4,32.7-0.4,54.4-8.4C-48.3,197.9-36.7,157-6.3,157c11,0,27.2,5.2,47.2,32.1"/>
+	<path class="st2" d="M-51.9,201.9c0.9,1.5,16,25.3,44.8,25.6c18.9,0.2,33.3-14,46.4-26.4c13.2-12.5,14.3-22.3,28.8-32
+		c9.4-6.3,18.7-9.1,25-10.5"/>
+	<path class="st2" d="M48.9,201.9c5.8,7.4,16.5,18.5,33.1,23.9c3.2,1.1,6.4,1.8,9.3,2.3"/>
+</g>
+<line class="st7" x1="85" y1="165.6" x2="85" y2="219.4"/>
+<path class="st7" d="M77,168.4v47c0,1.5,0,1.5,0,1.5"/>
+<line class="st7" x1="69.7" y1="174.1" x2="69.7" y2="212"/>
+<line class="st7" x1="63.4" y1="179" x2="63.4" y2="207.3"/>
+<line class="st7" x1="57.1" y1="185.3" x2="57.1" y2="202.6"/>
+<line class="st7" x1="33.3" y1="189.6" x2="33.3" y2="198.1"/>
+<line class="st7" x1="26.7" y1="179.4" x2="26.7" y2="207"/>
+<line class="st7" x1="18.2" y1="174.1" x2="18.2" y2="212"/>
+<line class="st7" x1="8.7" y1="165.6" x2="8.7" y2="219.4"/>
+<line class="st7" x1="351.8" y1="165.6" x2="351.8" y2="219.4"/>
+<path class="st7" d="M359.8,168.4v47c0,1.5,0,1.5,0,1.5"/>
+<line class="st7" x1="367.1" y1="174.1" x2="367.1" y2="212"/>
+<line class="st7" x1="373.4" y1="179" x2="373.4" y2="207.3"/>
+<line class="st7" x1="379.7" y1="185.3" x2="379.7" y2="202.6"/>
+<line class="st7" x1="404.4" y1="189.6" x2="404.4" y2="198.1"/>
+<line class="st7" x1="411" y1="179.4" x2="411" y2="207"/>
+<line class="st7" x1="419.5" y1="174.1" x2="419.5" y2="212"/>
+<line class="st7" x1="429" y1="165.6" x2="429" y2="219.4"/>
+</svg>
