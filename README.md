@@ -1,11 +1,9 @@
-<img src="img/popvae_logo.svg" width="100%">
+<img src="img/popvae_logo.svg" width="40%">
 
 Dimensionality reduction for population genetic data with a variational autoencoder (VAE)
 
-# Overview
-popVAE fits a variational autoencoder to a set up input genotypes. A VAE is essentially a pair of neural networks which first encodes an input as a probability distribution in a low-dimensional latent space and then attempts to recreate the input given a location in latent space. Here's a figure describing the basic setup:  
-
-<img src="img/vae_network.svg" width="70%">
+# Summary
+popVAE fits a variational autoencoder to a set up input genotypes. A VAE is essentially a pair of neural networks which first encodes an input as a probability distribution in a low-dimensional latent space and then attempts to recreate the input given a location in latent space. 
 
 By passing genotypes to a trained encoder we can visualize the relative differentiation among samples (more similar genotypes should be close to each other in latent space). This is similar to PCA, t-SNE, or UMAP, but with a user-defined number of dimensions and using a completely nonlinear framework. By passing latent space coordinates to the decoder we can also create new artificial genotypes characteristic of a given sample or population. 
 
