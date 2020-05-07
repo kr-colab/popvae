@@ -1,4 +1,6 @@
-<img src="img/popvae_logo.svg" width="40%">
+<p align="center">
+  <img src="img/popvae_logo.svg" width="40%">
+</p>
 
 Dimensionality reduction for population genetic data with a variational autoencoder (VAE)
 
