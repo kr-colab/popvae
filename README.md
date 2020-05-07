@@ -10,9 +10,9 @@ For genotype data we can use the encoder to visualize differentiation among a se
 A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at: ?coming soon?
 
 # Install
-The `setup.py` script should take care of all dependencies. Clone this repo then install with 
-
+Clone this repo and install with: 
 ```
+git clone https://github.com/cjbattey/popvae.git
 cd popvae
 python setup.py install
 ```
