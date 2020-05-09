@@ -416,6 +416,7 @@ h.to_csv(out+"_history.txt",sep="\t")
 vae.load_weights(out+"_weights.hdf5")
 pred=encoder.predict(dc,batch_size=batch_size)[0] #returns [mean,sd,sample] for individual distributions in latent space
 pred=pd.DataFrame(pred)
+pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
 pred['sampleID']=samples
 pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
 
