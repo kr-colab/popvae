@@ -52,7 +52,7 @@ p = bokeh.plotting.figure(plot_width=900, plot_height=600,
 
 for key, group in ld.groupby(colorby):
     #print(key)
-    p.circle(x='LD1',y='LD2',size=5,alpha=0.7,
+    p.circle(x='LD1',y='LD2',size=7,alpha=0.75,
              source=bokeh.models.ColumnDataSource(group),
              color=cmap[key],legend=key)
 
