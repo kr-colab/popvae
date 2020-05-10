@@ -21,7 +21,7 @@ parser.add_argument("--infile",
                           from --save_allele_counts).")
 parser.add_argument("--out",default="vae",
                     help="path for saving output")
-parser.add_argument("--patience",default=50,type=int,
+parser.add_argument("--patience",default=100,type=int,
                     help="training patience. default=50")
 parser.add_argument("--max_epochs",default=500,type=int,
                     help="max training epochs. default=500")
@@ -81,6 +81,10 @@ parser.add_argument("--PCA_scaler",default="Patterson",type=str,
                           Options: 'None' (mean-center the data but do not scale sites), \
                           'Patterson' (mean-center then apply the scaling described in Eq 3 of Patterson et al. 2006, Plos Gen)\
                           default: Patterson. See documentation of allel.pca for further information.")
+parser.add_argument("--plot",default=False,action="store_true",
+                    help="generate an interactive scatterplot of the latent space. requires --metadata. Run python scripts/plotvae.py --h for customizations")
+parser.add_argument("--metadata",default=None,
+                    help="path to tab-delimited metadata file with column 'sampleID'.")
 args=parser.parse_args()
 
 infile=args.infile
@@ -105,10 +109,14 @@ depth=args.depth
 width=args.width
 n_pc_axes=args.n_pc_axes
 search_network_sizes=args.search_network_sizes
+plot=args.plot
+metadata=args.metadata
+
 depth_range=args.depth_range
 depth_range=np.array([int(x) for x in re.split(",",depth_range)])
 width_range=args.width_range
 width_range=np.array([int(x) for x in re.split(",",width_range)])
+
 
 
 os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
@@ -453,6 +461,9 @@ fig.savefig(out+"_history.pdf",bbox_inches='tight')
 if PCA:
     timeout=np.array([vaetime,pcatime])
     np.savetxt(X=timeout,fname=out+"_runtimes.txt")
+
+if plot:
+    subprocess.run("python scripts/plotvae.py --latent_coords "+out+'_latent_coords.txt'+' --metadata '+metadata,shell=True)
 
 # ###debugging parameters
 # os.chdir("/Users/cj/popvae/")
