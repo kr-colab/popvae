@@ -1,8 +1,8 @@
 #make a bokeh scatterplot from popvae output
-import bokeh, pandas as pd, matplotlib, numpy as np, os, re, textwrap
+import bokeh, pandas as pd, numpy as np
 from bokeh import models, plotting, io
-import colormap
 import argparse
+
 parser=argparse.ArgumentParser()
 parser.add_argument("--latent_coords",help="path to latent_coords.txt file")
 parser.add_argument("--metadata",help="path to metadata file with column named 'sampleID'")
@@ -15,11 +15,6 @@ latent_coords=args.latent_coords
 metadata=args.metadata
 colorby=args.colorby
 outfile=args.outfile
-
-# latent_coords="/Users/cj/popvae/out/ag1000g/ag1000g_1e5snps_latent_coords.txt"
-# metadata="/Users/cj/popvae/data/ag1000g/anopheles_samples_sp.txt"
-# colorby="country"
-# len(pd.factorize(meta[colorby])[1])
 
 #load data
 ld=pd.read_csv(latent_coords,sep="\t")
@@ -53,11 +48,11 @@ else:
     p.circle(x="LD1",y="LD2",size=7,alpha=0.75,source=ld,color="black")
 
 #hover panels
-tooltips=[(x,'@'+x) for x in ld.columns if not x in oldcols]
+tooltips=[(x,'@'+x) for x in ld.columns]
 hover = bokeh.models.HoverTool(tooltips=tooltips)
 p.add_tools(hover)
 
 if not outfile==None:
-    bokeh.io.output_file(filename=outfile,mode="inline")
+    bokeh.io.output_file(filename=outfile,mode="inline") #outputs an html
 bokeh.io.show(p)
 bokeh.io.reset_output()
