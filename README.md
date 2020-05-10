@@ -43,6 +43,14 @@ Default settings work well on most datasets, but validation loss can usually be 
 
 `--train_prop` sets the proportion of samples used for model training, with the rest used for validation. 
 
+To run a grid search over a specific set of network sizes with increased patience and a larger validation set on the test data, use: 
+```
+popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
+--out out/pabu_test --seed 42 --patience 300 \
+--search_network_sizes --width_range 32,256,512 \
+--depth_range 2,4,6 --train_prop 0.75
+```
+
 # Plotting
 Using the optional `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
 
