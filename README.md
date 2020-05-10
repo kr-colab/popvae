@@ -22,7 +22,7 @@ popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo in
   
   ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42```
 
-This model should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU (typically 5 - 100x faster).
+This model should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU.
 
 # Output
 At default settings popvae will output 4 files:    
