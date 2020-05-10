@@ -53,11 +53,7 @@ Should cause a plot like this to open in your default web browser:
   <img src="img/bokeh_test.png" width="60%">
 </p>
 
-You can (slightly) customize this plot with the `plotvae.py` script. 
-```
-python scripts/plotvae.py --latent_coords out/pabu_test_latent_coords.txt --metadata data/pabu/pabu_test_sample_data.txt --colorby k2pop
-```
-See options with `python scripts/plotvae.py --h`. 
+You can (slightly) customize this plot with the `plotvae.py` script. See options with `python scripts/plotvae.py --h`. 
 
 Alternately, simple scatter plots can be produced in R with:  
 ``` 
