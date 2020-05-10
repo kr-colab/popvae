@@ -44,7 +44,22 @@ Default settings work well on most datasets, but validation loss can usually be 
 `--train_prop` sets the proportion of samples used for model training, with the rest used for validation. 
 
 # Plotting
-For the test data a simple scatter plot can be produced in R with:  
+Using the `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
+
+```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
+
+Should cause a plot like this to open in your default web browser: 
+<p align="center">
+  <img src="img/bokeh_test.png" width="60%">
+</p>
+
+You can (slightly) customize this plot with the `plotvae.py` script. 
+```
+python scripts/plotvae.py --latent_coords out/pabu_test_latent_coords.txt --metadata data/pabu/pabu_test_sample_data.txt --colorby k2pop
+```
+See options with `python scripts/plotvae.py --h`. 
+
+Alternately, simple scatter plots can be produced in R with:  
 ``` 
 library(ggplot2);library(data.table)
 setwd("~/popvae/")
@@ -66,12 +81,6 @@ ggplot(data=pd,aes(x=LD1,y=LD2,col=Longitude))+
 <p align="center">
   <img src="img/pabu_test.svg" width="50%">
 </p>
-
-We also provide a plotting script (`scripts/plotvae.py`) that generates an interactive scatterplot using the bokeh library. 
-```
-python scripts/plotvae.py --latent_coords out/pabu_test_latent_coords.txt --metadata data/pabu/pabu_test_sample_data.txt --colorby k2pop
-```
-See options with `python scripts/plotvae.py --h`. 
 
 Note there are two main groups of samples corresponding to eastern and western sampling localities, as well as cline within the western group. These are allopatric (the big gap) and parapatric (the cline in western samples) breeding populations with different migratory strategies (see http://cjbattey.com/papers/pabu_amnat_final.pdf to compare these results with PCA and STRUCTURE). 
 
