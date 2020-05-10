@@ -44,7 +44,7 @@ Default settings work well on most datasets, but validation loss can usually be 
 `--train_prop` sets the proportion of samples used for model training, with the rest used for validation. 
 
 # Plotting
-Using the `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
+Using the optional `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
 
 ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
 
