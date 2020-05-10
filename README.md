@@ -48,7 +48,7 @@ To run a grid search over a specific set of network sizes with increased patienc
 popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
 --out out/pabu_test --seed 42 --patience 300 \
 --search_network_sizes --width_range 32,256,512 \
---depth_range 2,4,6 --train_prop 0.75
+--depth_range 3,5,8 --train_prop 0.75
 ```
 
 # Plotting
