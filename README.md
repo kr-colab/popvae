@@ -18,11 +18,11 @@ python setup.py install
 ```
 
 # Run
-popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a test dataset of around 1,000 genome-wide SNPs from migratory Painted Buntings (from this paper: http://cjbattey.com/papers/pabu_amnat_final.pdf). Fit a model to this data with: 
+popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a small test dataset of ddRADseq genotypes from migratory Painted Buntings (from this paper: http://cjbattey.com/papers/pabu_amnat_final.pdf). Fit a model with: 
   
   ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42```
 
-This model should fit in less than a minute on a regular laptop CPU. For running on larger datasets we strongly recommend using a CUDA-enabled GPU (typically 5 - 100x faster).
+This model should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU.
 
 # Output
 At default settings popvae will output 4 files:    
@@ -43,8 +43,27 @@ Default settings work well on most datasets, but validation loss can usually be 
 
 `--train_prop` sets the proportion of samples used for model training, with the rest used for validation. 
 
+To run a grid search over a specific set of network sizes with increased patience and a larger validation set on the test data, use: 
+```
+popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
+--out out/pabu_test --seed 42 --patience 300 \
+--search_network_sizes --width_range 32,256,512 \
+--depth_range 3,5,8 --train_prop 0.75
+```
+
 # Plotting
-For the test data a simple scatter plot can be produced in R with:  
+Using the optional `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
+
+```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
+
+Should cause a plot like this to open in your default web browser: 
+<p align="center">
+  <img src="img/bokeh_test.png" width="60%">
+</p>
+
+You can (slightly) customize this plot with the `plotvae.py` script. See options with `python scripts/plotvae.py --h`. 
+
+Alternately, simple scatter plots can be produced in R with:  
 ``` 
 library(ggplot2);library(data.table)
 setwd("~/popvae/")
@@ -66,12 +85,6 @@ ggplot(data=pd,aes(x=LD1,y=LD2,col=Longitude))+
 <p align="center">
   <img src="img/pabu_test.svg" width="50%">
 </p>
-
-We also provide a plotting script (`scripts/plotvae.py`) that generates an interactive scatterplot using the bokeh library. 
-```
-python scripts/plotvae.py --latent_coords out/pabu_test_latent_coords.txt --metadata data/pabu/pabu_test_sample_data.txt --colorby k2pop
-```
-See options with `python scripts/plotvae.py --h`. 
 
 Note there are two main groups of samples corresponding to eastern and western sampling localities, as well as cline within the western group. These are allopatric (the big gap) and parapatric (the cline in western samples) breeding populations with different migratory strategies (see http://cjbattey.com/papers/pabu_amnat_final.pdf to compare these results with PCA and STRUCTURE). 
 
