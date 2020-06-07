@@ -1,6 +1,8 @@
 #trying to get pi equal between stdpopsim and 1kg data (chr22)
 import allel, numpy as np, pandas as pd, re, sys, os, stdpopsim
 np.random.seed(12345)
+#os.chdir("/Users/cj/popvae/")
+os.chdir("/home/cbattey2/popvae/") #on sesame
 
 def filter_genotypes(gen,pos,refs=None,alts=None):
     print("genotype matrix: "+str(gen.shape))
@@ -39,9 +41,9 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
 
     return(dc_all,dc,ac_all,ac,pos)
 
-#empirical
-#infile="/Users/cj/popvae/data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
-infile="/Users/cj/popvae/data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #on sesame see /home/cbattey2/popvae/data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz
+print("reading VCF")
+infile="data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
+#infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz"
 vcf=allel.read_vcf(infile,log=sys.stderr)
 gen=allel.GenotypeArray(vcf['calldata/GT'])
 samples=vcf['samples']
@@ -50,7 +52,7 @@ refs=vcf['variants/REF']
 alts=vcf['variants/ALT']
 dc_all,dc,ac_all,ac,pos=filter_genotypes(gen,pos,refs,alts)
 
-#simulation
+print("simulating")
 species = stdpopsim.get_species("HomSap")
 contig = species.get_contig("chr22",genetic_map="HapMapII_GRCh37")
 model = species.get_demographic_model('OutOfAfrica_3G09') #vs OutOfAfrica_3G09  OutOfAfricaArchaicAdmixture_5R19
@@ -77,6 +79,8 @@ print("empirical pi from SNPs passing filters: "+str(allel.sequence_diversity(po
 #segregating sites
 print("simulation SNPs passing filters: "+str(sim_dc.shape[0]))
 print("empirical SNPs passing filters: "+str(dc.shape[0]))
+
+
 
 
 
