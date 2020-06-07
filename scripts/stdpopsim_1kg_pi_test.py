@@ -1,8 +1,8 @@
 #trying to get pi equal between stdpopsim and 1kg data (chr22)
 import allel, numpy as np, pandas as pd, re, sys, os, stdpopsim
 np.random.seed(12345)
-#os.chdir("/Users/cj/popvae/")
-os.chdir("/home/cbattey2/popvae/") #on sesame
+os.chdir("/Users/cj/popvae/")
+#os.chdir("/home/cbattey2/popvae/") #on sesame
 
 def filter_genotypes(gen,pos,refs=None,alts=None):
     print("genotype matrix: "+str(gen.shape))
@@ -42,8 +42,16 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
     return(dc_all,dc,ac_all,ac,pos)
 
 print("reading VCF")
+#input VCFs prepped from 1000genomes phase 3 with:
+
+#cd data/1kg
+#bcftools view -S YRI_CEU_CHB_sample_IDs.txt -o YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz
+#bgzip YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf
+
+#where YRI_CEU_CHB_sample_IDs.txt is a list of 50 individual IDs per population sampled from the integrated_call_samples_v3.20130502.ALL.panel
+
 infile="data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
-#infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz"
+#infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #even more SNPs in the high coverage resequencing data, both before and after masking
 vcf=allel.read_vcf(infile,log=sys.stderr)
 gen=allel.GenotypeArray(vcf['calldata/GT'])
 samples=vcf['samples']
@@ -55,7 +63,7 @@ dc_all,dc,ac_all,ac,pos=filter_genotypes(gen,pos,refs,alts)
 print("simulating")
 species = stdpopsim.get_species("HomSap")
 contig = species.get_contig("chr22",genetic_map="HapMapII_GRCh37")
-model = species.get_demographic_model('OutOfAfrica_3G09') #vs OutOfAfrica_3G09  OutOfAfricaArchaicAdmixture_5R19
+model = species.get_demographic_model('OutOfAfricaArchaicAdmixture_5R19') #similar results with OutOfAfrica_3G09 and OutOfAfricaArchaicAdmixture_5R19
 simsamples = model.get_samples(100, 100, 100)
 engine = stdpopsim.get_engine('msprime')
 sim = engine.simulate(model,contig,simsamples,seed=12345)
