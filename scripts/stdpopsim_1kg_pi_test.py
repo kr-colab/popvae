@@ -1,4 +1,11 @@
-#trying to get pi equal between stdpopsim and 1kg data (chr22)
+#input VCFs prepped from 1000genomes phase 3 with:
+
+#cd data/1kg
+#bcftools view -S YRI_CEU_CHB_sample_IDs.txt -o YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz
+#bgzip YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf
+
+#where YRI_CEU_CHB_sample_IDs.txt is a list of 50 individual IDs per population sampled from the integrated_call_samples_v3.20130502.ALL.panel
+
 import allel, numpy as np, pandas as pd, re, sys, os, stdpopsim
 np.random.seed(12345)
 os.chdir("/Users/cj/popvae/")
@@ -46,14 +53,6 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
     return(dc_all,dc,ac_all,ac,pos)
 
 print("reading VCF")
-#input VCFs prepped from 1000genomes phase 3 with:
-
-#cd data/1kg
-#bcftools view -S YRI_CEU_CHB_sample_IDs.txt -o YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz
-#bgzip YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf
-
-#where YRI_CEU_CHB_sample_IDs.txt is a list of 50 individual IDs per population sampled from the integrated_call_samples_v3.20130502.ALL.panel
-
 infile="data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
 #infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #even more SNPs in the high coverage resequencing data, both before and after masking
 vcf=allel.read_vcf(infile,log=sys.stderr)
