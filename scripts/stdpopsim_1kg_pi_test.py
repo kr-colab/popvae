@@ -24,6 +24,8 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
     biallel=ac_all.is_biallelic()
     dc_all=ac_all[biallel,1] #derived alleles per snp
     dc=np.array(ac[biallel,:,1],dtype="int_") #derived alleles per individual
+    ac=ac[biallel,:,:]
+    ac_all=ac_all[biallel,:]
     pos=pos[biallel]
     missingness=gen[biallel,:,:].is_missing()
     print("dropped "+str(np.sum(~biallel))+" invariant sites")
@@ -33,6 +35,8 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
     singletons=np.array([x<=2 for x in dc_all])
     dc_all=dc_all[~singletons]
     dc=dc[~singletons,:]
+    ac_all=ac_all[~singletons,:]
+    ac=ac[~singletons,:,:]
     ninds=ninds[~singletons]
     missingness=missingness[~singletons,:]
     pos=pos[~singletons]
@@ -88,7 +92,8 @@ print("empirical pi from SNPs passing filters: "+str(allel.sequence_diversity(po
 print("simulation SNPs passing filters: "+str(sim_dc.shape[0]))
 print("empirical SNPs passing filters: "+str(dc.shape[0]))
 
-
+ac_all.shape
+sim_ac_all.shape
 
 
 
