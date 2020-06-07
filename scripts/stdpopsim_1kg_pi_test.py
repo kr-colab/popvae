@@ -41,7 +41,7 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
 
 #empirical
 #infile="/Users/cj/popvae/data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
-infile="/Users/cj/popvae/data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz"
+infile="/Users/cj/popvae/data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #on sesame see /home/cbattey2/popvae/data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz
 vcf=allel.read_vcf(infile,log=sys.stderr)
 gen=allel.GenotypeArray(vcf['calldata/GT'])
 samples=vcf['samples']
@@ -61,7 +61,7 @@ sim_gen=allel.HaplotypeArray(sim.genotype_matrix()).to_genotypes(ploidy=2)
 sim_pos=np.array([s.position for s in sim.sites()])
 sim_dc_all,sim_dc,sim_ac_all,sim_ac,sim_pos=filter_genotypes(sim_gen,sim_pos)
 
-#mask inaccessible sites 
+#mask inaccessistble sites
 sim_dc=sim_dc[sim_pos>1.6e7,:]
 sim_dc_all=sim_dc_all[sim_pos>1.6e7]
 sim_pos=sim_pos[sim_pos>1.6e7]
