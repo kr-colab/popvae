@@ -1,10 +1,10 @@
 #input VCFs prepped from 1000genomes phase 3 with:
 
-#cd data/1kg
+#cd ~/popvae/data/1kg
 #bcftools view -S YRI_CEU_CHB_sample_IDs.txt -o YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz
 #bgzip YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf
 
-#where YRI_CEU_CHB_sample_IDs.txt is a list of 50 individual IDs per population sampled from the integrated_call_samples_v3.20130502.ALL.panel
+#where YRI_CEU_CHB_sample_IDs.txt is a list of 50 individual IDs per population sampled from `integrated_call_samples_v3.20130502.ALL.panel`
 
 import allel, numpy as np, pandas as pd, re, sys, os, stdpopsim
 np.random.seed(12345)
@@ -52,6 +52,18 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
 
     return(dc_all,dc,ac_all,ac,pos)
 
+#get accessibility mask
+mask=[]
+with open("/Users/cj/popvae/data/1kg/chr22.strictMask.fasta") as f:
+    next(f)
+    for line in f:
+        a=line
+        a=re.sub("\n","",a)
+        for position in a:
+            mask.append(position)
+mask=np.array(mask)
+keep=np.argwhere(mask=="P")
+
 print("reading VCF")
 infile="data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
 #infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #even more SNPs in the high coverage resequencing data, both before and after masking
@@ -61,41 +73,36 @@ samples=vcf['samples']
 pos=vcf['variants/POS']
 refs=vcf['variants/REF']
 alts=vcf['variants/ALT']
+m1=np.isin(pos,keep)
+gen=gen[m1,:,:]
+pos=pos[m1]
+refs=refs[m1]
+alts=alts[m1]
 dc_all,dc,ac_all,ac,pos=filter_genotypes(gen,pos,refs,alts)
 
 print("simulating")
 species = stdpopsim.get_species("HomSap")
 contig = species.get_contig("chr22",genetic_map="HapMapII_GRCh37")
-model = species.get_demographic_model('OutOfAfricaArchaicAdmixture_5R19') #similar results with OutOfAfrica_3G09 and OutOfAfricaArchaicAdmixture_5R19
+model = species.get_demographic_model('OutOfAfrica_3G09') #similar results with OutOfAfrica_3G09 and OutOfAfricaArchaicAdmixture_5R19
 simsamples = model.get_samples(100, 100, 100)
 engine = stdpopsim.get_engine('msprime')
 sim = engine.simulate(model,contig,simsamples,seed=12345)
 sim_gen=allel.HaplotypeArray(sim.genotype_matrix()).to_genotypes(ploidy=2)
-sim_pos=np.array([s.position for s in sim.sites()])
+sim_pos=np.array([s.position for s in sim.sites()],dtype="int32")
+m2=np.isin(sim_pos,keep)
+sim_gen=sim_gen[m2,:,:]
+sim_pos=sim_pos[m2]
 sim_dc_all,sim_dc,sim_ac_all,sim_ac,sim_pos=filter_genotypes(sim_gen,sim_pos)
 
-#mask inaccessistble sites
-sim_dc=sim_dc[sim_pos>1.6e7,:]
-sim_dc_all=sim_dc_all[sim_pos>1.6e7]
-sim_pos=sim_pos[sim_pos>1.6e7]
-dc=dc[pos>1.6e7,:]
-dc_all=dc_all[pos>1.6e7]
-pos=pos[pos>1.6e7]
 
 #pi
 print("simulation pi from tskit: "+str(sim.diversity()))
-print("simulation pi from SNPs passing filters: "+str(allel.sequence_diversity(sim_pos,sim_ac_all)))
-print("empirical pi from SNPs passing filters: "+str(allel.sequence_diversity(pos,ac_all)))
+print("simulation pi from SNPs passing filters: "+str(allel.sequence_diversity(sim_pos,sim_ac_all,is_accessible=mask=="P")))
+print("empirical pi from SNPs passing filters: "+str(allel.sequence_diversity(pos,ac_all,is_accessible=mask=="P")))
 
 #segregating sites
 print("simulation SNPs passing filters: "+str(sim_dc.shape[0]))
 print("empirical SNPs passing filters: "+str(dc.shape[0]))
-
-ac_all.shape
-sim_ac_all.shape
-
-
-
 
 #
 #
