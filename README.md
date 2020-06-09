@@ -3,15 +3,16 @@
 </p>
 
 # Summary
-popVAE fits a variational autoencoder (VAE) to a sample of genotypes. A VAE is a pair of neural networks that first encodes an input as a probability distribution in a low-dimensional latent space and then attempts to recreate the input given a location in latent space. The "encoder" is the network that goes from data to latent space, and the "decoder" is the network from latent space to generated data. 
-
-For genotype data we can use the encoder to visualize differentiation among a set of samples, and the decoder to generate artifical genotypes similar to a given sample or population. 
+popVAE fits a variational autoencoder (VAE) and outputs the latent space.
 
 A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at: ?coming soon?
 
 # Install
+Popvae requires python 3.7 and tensorflow 1.15. We recommend you run in an new environment. 
+
 Clone this repo and install with: 
 ```
+conda create --name popvae
 git clone https://github.com/cjbattey/popvae.git
 cd popvae
 python setup.py install
@@ -22,7 +23,7 @@ popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo in
   
   ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42```
 
-This model should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU.
+It should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU.
 
 # Output
 At default settings popvae will output 4 files:    
