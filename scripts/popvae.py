@@ -1,16 +1,14 @@
 import warnings
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore",category=DeprecationWarning)
-    import keras, numpy as np, os, allel, pandas as pd, time
-    import zarr, subprocess, h5py, re, sys, os, argparse
-    from matplotlib import pyplot as plt
-    from tqdm import tqdm
-    from keras.models import Sequential
-    from keras import layers
-    from keras.layers.core import Lambda
-    from keras import backend as K
-    from keras.models import Model
-    import tensorflow
+import keras, numpy as np, os, allel, pandas as pd, time, random
+import zarr, subprocess, h5py, re, sys, os, argparse
+from matplotlib import pyplot as plt
+from tqdm import tqdm
+from keras.models import Sequential
+from keras import layers
+from keras.layers.core import Lambda
+from keras import backend as K
+from keras.models import Model
+import tensorflow
 
 parser=argparse.ArgumentParser()
 parser.add_argument("--infile",
@@ -21,7 +19,7 @@ parser.add_argument("--infile",
                           from --save_allele_counts).")
 parser.add_argument("--out",default="vae",
                     help="path for saving output")
-parser.add_argument("--patience",default=100,type=int,
+parser.add_argument("--patience",default=50,type=int,
                     help="training patience. default=50")
 parser.add_argument("--max_epochs",default=500,type=int,
                     help="max training epochs. default=500")
@@ -122,6 +120,8 @@ width_range=np.array([int(x) for x in re.split(",",width_range)])
 os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
 
 if not seed==None:
+    os.environ['PYTHONHASHSEED']=str(seed)
+    random.seed(seed)
     np.random.seed(seed)
     tensorflow.set_random_seed(seed)
 
@@ -215,6 +215,7 @@ else:
     trainsamples=samples[train]
     testsamples=samples[test]
 
+print('validation samples:'+testsamples)
 print('running on '+str(dc.shape[1])+" SNPs")
 
 #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
@@ -325,7 +326,7 @@ if search_network_sizes:
 def sampling(args):
     z_mean, z_log_var = args
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
-                              mean=0., stddev=1.)
+                              mean=0., stddev=1.,seed=seed)
     return z_mean + K.exp(z_log_var) * epsilon
 
 #encoder
@@ -422,9 +423,14 @@ h.to_csv(out+"_history.txt",sep="\t")
 
 #predict latent space coords for all samples from weights minimizing val loss
 vae.load_weights(out+"_weights.hdf5")
-pred=encoder.predict(dc,batch_size=batch_size)[0] #returns [mean,sd,sample] for individual distributions in latent space
-pred=pd.DataFrame(pred)
-pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
+pred=encoder.predict(dc,batch_size=batch_size) #returns [mean,sd,sample] for individual distributions in latent space
+p=pd.DataFrame()
+p['mean1']=pred[0][:,0]
+p['mean2']=pred[0][:,1]
+p['sd1']=pred[1][:,0]
+p['sd2']=pred[1][:,1]
+pred=p
+#pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
 pred['sampleID']=samples
 pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
 
@@ -467,11 +473,11 @@ if plot:
 
 # ###debugging parameters
 # os.chdir("/Users/cj/popvae/")
-# infile="data/hgdp/hgdp_chr1_1e5snps_seed42.popvae.hdf5"
-# sample_data="data/hgdp/hgdp_sample_data.txt"
+# infile="data/pabu/pabu_test_genotypes.vcf"
+# sample_data="data/pabu/pabu_test_sample_data.txt"
 # save_allele_counts=True
-# patience=20
-# batch_size=64
+# patience=100
+# batch_size=32
 # max_epochs=300
 # seed=12345
 # save_weights=False

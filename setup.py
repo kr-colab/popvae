@@ -23,7 +23,7 @@ setup(name='popvae',
                         "tqdm",
                         "pandas",
                         "zarr"],
-      scripts=["scripts/popvae.py"],
+      scripts=["scripts/popvae.py","scripts/plotvae.py"],
       zip_safe=False,
       setup_requires=[]
 )
