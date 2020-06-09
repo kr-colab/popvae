@@ -34,21 +34,17 @@ def filter_genotypes(gen,pos,refs=None,alts=None):
     ac=ac[biallel,:,:]
     ac_all=ac_all[biallel,:]
     pos=pos[biallel]
-    missingness=gen[biallel,:,:].is_missing()
     print("dropped "+str(np.sum(~biallel))+" invariant sites")
     print(dc.shape)
 
-    ninds=np.array([np.sum(x) for x in ~missingness])
-    singletons=np.array([x<=2 for x in dc_all])
-    dc_all=dc_all[~singletons]
-    dc=dc[~singletons,:]
-    ac_all=ac_all[~singletons,:]
-    ac=ac[~singletons,:,:]
-    ninds=ninds[~singletons]
-    missingness=missingness[~singletons,:]
-    pos=pos[~singletons]
-    print("dropped "+str(np.sum(singletons))+" singletons")
-    print(dc.shape)
+    # singletons=np.array([x<=2 for x in dc_all])
+    # dc_all=dc_all[~singletons]
+    # dc=dc[~singletons,:]
+    # ac_all=ac_all[~singletons,:]
+    # ac=ac[~singletons,:,:]
+    # pos=pos[~singletons]
+    # print("dropped "+str(np.sum(singletons))+" singletons")
+    # print(dc.shape)
 
     return(dc_all,dc,ac_all,ac,pos)
 
@@ -57,19 +53,23 @@ mask=[]
 with open("/Users/cj/popvae/data/1kg/chr22.strictMask.fasta") as f:
     next(f)
     for line in f:
-        a=line
-        a=re.sub("\n","",a)
-        for position in a:
+        line=re.sub("\n","",line)
+        for position in line:
             mask.append(position)
 mask=np.array(mask)
 keep=np.argwhere(mask=="P")
 
 print("reading VCF")
-infile="data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
-#infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #even more SNPs in the high coverage resequencing data, both before and after masking
+#infile="data/1kg/YRI_CEU_CHB.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz"
+infile="data/1kg/YRI_CEU_CHB.chr22.highcoverageCCDG.vcf.gz" #even more SNPs in the high coverage resequencing data, both before and after masking
 vcf=allel.read_vcf(infile,log=sys.stderr)
 gen=allel.GenotypeArray(vcf['calldata/GT'])
 samples=vcf['samples']
+metadata=pd.read_csv("data/1kg/sample_metadata.txt",sep="\t")
+metadata['sampleID2']=metadata['sampleID']
+metadata.set_index('sampleID',inplace=True)
+metadata=metadata.reindex(np.array(samples))
+gen=gen[:,np.concatenate(np.argwhere(np.array(metadata['pop']=='YRI'))),:]
 pos=vcf['variants/POS']
 refs=vcf['variants/REF']
 alts=vcf['variants/ALT']
@@ -88,12 +88,12 @@ simsamples = model.get_samples(100, 100, 100)
 engine = stdpopsim.get_engine('msprime')
 sim = engine.simulate(model,contig,simsamples,seed=12345)
 sim_gen=allel.HaplotypeArray(sim.genotype_matrix()).to_genotypes(ploidy=2)
+sim_gen=sim_gen[:,:50,:] #pop order is YRI, CEU, CHB
 sim_pos=np.array([s.position for s in sim.sites()],dtype="int32")
 m2=np.isin(sim_pos,keep)
 sim_gen=sim_gen[m2,:,:]
 sim_pos=sim_pos[m2]
 sim_dc_all,sim_dc,sim_ac_all,sim_ac,sim_pos=filter_genotypes(sim_gen,sim_pos)
-
 
 #pi
 print("simulation pi from tskit: "+str(sim.diversity()))
@@ -104,7 +104,9 @@ print("empirical pi from SNPs passing filters: "+str(allel.sequence_diversity(po
 print("simulation SNPs passing filters: "+str(sim_dc.shape[0]))
 print("empirical SNPs passing filters: "+str(dc.shape[0]))
 
-#
-#
+#tajima's D
+print("simulation Tajima's D:"+str(allel.tajima_d(sim_ac_all,sim_pos)))
+print("empirical Tajima's D:"+ str(allel.tajima_d(ac_all,pos)))
+
 # from matplotlib import pyplot as plt
 # plt.hist(pos,bins=100)[2] #weird distribution of coverage
