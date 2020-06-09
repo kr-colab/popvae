@@ -8,11 +8,11 @@ popVAE fits a variational autoencoder (VAE) and outputs the latent space.
 A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at: ?coming soon?
 
 # Install
-Popvae requires python 3.7 and tensorflow 1.15. We recommend you run in an new environment. 
+Popvae requires python 3.7 and tensorflow 1.15. We recommend you run in a new environment. 
 
 Clone this repo and install with: 
 ```
-conda create --name popvae
+conda create --name popvae python=3.7.7
 git clone https://github.com/cjbattey/popvae.git
 cd popvae
 python setup.py install
