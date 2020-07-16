@@ -18,12 +18,12 @@ setup(name='popvae',
                         "scikit-allel",
                         "matplotlib",
                         "scipy",
-                        "keras",
+                        "keras==2.3.1",
                         "tensorflow==1.15.2",
                         "tqdm",
                         "pandas",
                         "zarr"],
       scripts=["scripts/popvae.py","scripts/plotvae.py"],
       zip_safe=False,
-      setup_requires=[]
+      setup_requires=["numpy"]
 )
