@@ -18,9 +18,6 @@ outfile=args.outfile
 
 #load data
 ld=pd.read_csv(latent_coords,sep="\t")
-if(len(ld.columns)==3):
-     ld.columns=['LD1','LD2','sampleID']
-oldcols=ld.columns
 meta=pd.read_csv(metadata,sep="\t")
 ld=ld.merge(meta,on="sampleID")
 
@@ -41,11 +38,11 @@ if not colorby==None:
     keys=np.array(pd.factorize(ld[colorby])[1])
     cmap={keys[x]:pal[x] for x in range(len(pd.factorize(ld[colorby])[1]))}
     for key, group in ld.groupby(colorby):
-        p.circle(x='LD1',y='LD2',size=7,alpha=0.75,
+        p.circle(x='mean1',y='mean2',size=7,alpha=0.75,
                  source=bokeh.models.ColumnDataSource(group),
                  color=cmap[key],legend=key)
 else:
-    p.circle(x="LD1",y="LD2",size=7,alpha=0.75,source=ld,color="black")
+    p.circle(x="mean1",y="mean2",size=7,alpha=0.75,source=ld,color="black")
 
 #hover panels
 tooltips=[(x,'@'+x) for x in ld.columns]

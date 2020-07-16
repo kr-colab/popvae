@@ -116,6 +116,10 @@ width_range=args.width_range
 width_range=np.array([int(x) for x in re.split(",",width_range)])
 
 
+if args.plot:
+    if args.metadata==None:
+        print("ERROR: `--plot` argument requires `--metadata`")
+        exit()
 
 os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
 
