@@ -3,7 +3,7 @@
 </p>
 
 # Summary
-popVAE fits a variational autoencoder (VAE) and outputs the latent space.
+popVAE fits a variational autoencoder (VAE) to a set of genotypes and outputs the latent space.
 
 A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at: ?coming soon?
 
