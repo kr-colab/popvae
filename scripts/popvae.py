@@ -61,15 +61,6 @@ parser.add_argument("--max_SNPs",default=None,type=int,
                           to run. default: None")
 parser.add_argument("--latent_dim",default=2,type=int,
                     help="N latent dimensions to fit. default: 2")
-parser.add_argument("--prune_LD",default=False,action="store_true",
-                    help="Prune sites for linkage disequilibrium before fitting the model? \
-                    See --prune_iter and --prune_size to adjust parameters. \
-                    By default this will use a 50-SNP rolling window to drop \
-                    one of each pair of sites with r**2 > 0.1 .")
-parser.add_argument("--prune_iter",default=1,type=int,
-                    help="number of iterations to run LD thinning. default: 1")
-parser.add_argument("--prune_size",default=50,type=int,
-                    help="size of windows for LD pruning. default: 50")
 parser.add_argument("--PCA",default=False,action="store_true",
                     help="Run PCA on the derived allele count matrix in scikit-allel.")
 parser.add_argument("--n_pc_axes",default=20,type=int,
@@ -98,9 +89,6 @@ out=args.out
 prediction_freq=args.prediction_freq
 max_SNPs=args.max_SNPs
 latent_dim=args.latent_dim
-prune_LD=args.prune_LD
-prune_iter=args.prune_iter
-prune_size=args.prune_size
 PCA=args.PCA
 PCA_scaler=args.PCA_scaler
 depth=args.depth
@@ -114,7 +102,6 @@ depth_range=args.depth_range
 depth_range=np.array([int(x) for x in re.split(",",depth_range)])
 width_range=args.width_range
 width_range=np.array([int(x) for x in re.split(",",width_range)])
-
 
 if args.plot:
     if args.metadata==None:
@@ -145,7 +132,8 @@ elif infile.endswith('.popvae.hdf5'):
     samples=np.array(h5['samples'])
     h5.close()
 
-if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered hdf5
+#snp filters
+if not infile.endswith('.popvae.hdf5'):
     print("counting alleles")
     ac_all=gen.count_alleles() #count of alleles per snp
     ac=gen.to_allele_counts() #count of alleles per snp per individual
@@ -165,24 +153,11 @@ if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered h
     missingness=missingness[~singletons,:]
 
     print("filling missing data with rbinom(2,derived_allele_frequency)")
-    af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])]) #get allele frequencies for missing data imputation
+    af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])])
     for i in tqdm(range(np.shape(dc)[1])):
         indmiss=missingness[:,i]
         dc[indmiss,i]=np.random.binomial(2,af[indmiss])
 
-    if prune_LD:
-        print("pruning genotypes for linkage disequilibrium")
-        def ld_prune(gn, n_iter, size, step, threshold):
-            for i in range(n_iter):
-                loc_unlinked = allel.locate_unlinked(gn, size=size, step=step, threshold=threshold)
-                n = np.count_nonzero(loc_unlinked)
-                n_remove = gn.shape[0] - n
-                print('iteration', i+1, 'retaining', n, 'removing', n_remove, 'variants')
-                gn = gn.compress(loc_unlinked, axis=0)
-            return gn
-        dc = ld_prune(dc, prune_iter, prune_size, step=200, threshold=0.1)
-
-    #prep for analysis
     dc=np.transpose(dc)
     dc=dc*0.5 #0=homozygous reference, 0.5=heterozygous, 1=homozygous alternate
 
@@ -194,9 +169,8 @@ if not infile.endswith('.popvae.hdf5'): #filter SNPs unless given pre-filtered h
         else:
             outfile=h5py.File(infile+".popvae.hdf5", "w")
         outfile.create_dataset("derived_counts", data=dc)
-        outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #note this requires h5py v 2.10.0
+        outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
         outfile.close()
-        #sys.exit()
 
 if not max_SNPs==None:
     print("subsetting to "+str(max_SNPs)+" SNPs")
@@ -225,8 +199,6 @@ print('running on '+str(dc.shape[1])+" SNPs")
 #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
 if search_network_sizes:
     print('running grid search on network sizes')
-    #widthrange=[32,64,128,256]
-    #depthrange=[2,3,4,6]
     tmp_patience = patience / 4
 
     #get parameter combinations (will need to rework this for >2 params)
@@ -429,12 +401,15 @@ h.to_csv(out+"_history.txt",sep="\t")
 vae.load_weights(out+"_weights.hdf5")
 pred=encoder.predict(dc,batch_size=batch_size) #returns [mean,sd,sample] for individual distributions in latent space
 p=pd.DataFrame()
-p['mean1']=pred[0][:,0]
-p['mean2']=pred[0][:,1]
-p['sd1']=pred[1][:,0]
-p['sd2']=pred[1][:,1]
-pred=p
-#pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
+if latent_dim==2:
+    p['mean1']=pred[0][:,0]
+    p['mean2']=pred[0][:,1]
+    p['sd1']=pred[1][:,0]
+    p['sd2']=pred[1][:,1]
+    pred=p
+else:
+    pred=pd.DataFrame(pred[0])
+    pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
 pred['sampleID']=samples
 pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
 
