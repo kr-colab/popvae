@@ -9,128 +9,140 @@ from keras.layers.core import Lambda
 from keras import backend as K
 from keras.models import Model
 import tensorflow
+from streaming_data import DataGenerator
 
-parser=argparse.ArgumentParser()
-parser.add_argument("--infile",
-                    help="path to input genotypes in vcf (.vcf | .vcf.gz), \
-                          zarr, or .popvae.hdf5 format. Zarr files should be as produced \
-                          by scikit-allel's `vcf_to_zarr( )` function. `.popvae.hdf5`\
-                          files store filtered genotypes from previous runs (i.e. \
-                          from --save_allele_counts).")
-parser.add_argument("--out",default="vae",
-                    help="path for saving output")
-parser.add_argument("--patience",default=50,type=int,
-                    help="training patience. default=50")
-parser.add_argument("--max_epochs",default=500,type=int,
-                    help="max training epochs. default=500")
-parser.add_argument("--batch_size",default=32,type=int,
-                    help="batch size. default=32")
-parser.add_argument("--save_allele_counts",default=False,action="store_true",
-                    help="save allele counts and and sample IDs to \
-                    out+'.popvae.hdf5'.")
-parser.add_argument("--save_weights",default=False,action="store_true",
-                    help="save model weights to out+weights.hdf5.")
-parser.add_argument("--seed",default=None,type=int,help="random seed. \
-                                                         default: None")
-parser.add_argument("--train_prop",default=0.9,type=float,
-                    help="proportion of samples to use for training \
-                          (vs validation). default: 0.9")
-parser.add_argument("--search_network_sizes",default=False,action="store_true",
-                    help='run grid search over network sizes and use the network with \
-                          minimum validation loss. default: False. ')
-parser.add_argument("--width_range",default="32,64,128,256,512",type=str,
-                    help='range of hidden layer widths to test when `--search_network_sizes` is called.\
-                          Should be a comma-delimited list with no spaces. Default: 32,64,128,256,512')
-parser.add_argument("--depth_range",default="3,6,10,20",type=str,
-                    help='range of network depths to test when `--search_network_sizes` is called.\
-                          Should be a comma-delimited list with no spaces. Default: 4,6,8,10')
-parser.add_argument("--depth",default=6,type=int,
-                    help='number of hidden layers. default=6.')
-parser.add_argument("--width",default=128,type=int,
-                    help='nodes per hidden layer. default=128')
-parser.add_argument("--gpu_number",default='0',type=str,
-                    help='gpu number to use for training (try `gpustat` to get GPU numbers).\
-                          Use ` --gpu_number "" ` to run on CPU, and  \
-                          ` --parallel --gpu_number 0,1,2,3` to split batches across 4 GPUs.\
-                          default: 0')
-parser.add_argument("--prediction_freq",default=5,type=int,
-                    help="print predictions during training every \
-                          --prediction_freq epochs. default: 10")
-parser.add_argument("--max_SNPs",default=None,type=int,
-                    help="If not None, randomly select --max_SNPs variants \
-                          to run. default: None")
-parser.add_argument("--latent_dim",default=2,type=int,
-                    help="N latent dimensions to fit. default: 2")
-parser.add_argument("--PCA",default=False,action="store_true",
-                    help="Run PCA on the derived allele count matrix in scikit-allel.")
-parser.add_argument("--n_pc_axes",default=20,type=int,
-                    help="Number of PC axes to save in output. default: 20")
-parser.add_argument("--PCA_scaler",default="Patterson",type=str,
-                    help="How should allele counts be scaled prior to running the PCA?. \
-                          Options: 'None' (mean-center the data but do not scale sites), \
-                          'Patterson' (mean-center then apply the scaling described in Eq 3 of Patterson et al. 2006, Plos Gen)\
-                          default: Patterson. See documentation of allel.pca for further information.")
-parser.add_argument("--plot",default=False,action="store_true",
-                    help="generate an interactive scatterplot of the latent space. requires --metadata. Run python scripts/plotvae.py --h for customizations")
-parser.add_argument("--metadata",default=None,
-                    help="path to tab-delimited metadata file with column 'sampleID'.")
-args=parser.parse_args()
+def parse_arguments():
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--infile",
+                        help="path to input genotypes in vcf (.vcf | .vcf.gz), \
+                            zarr, or .popvae.hdf5 format. Zarr files should be as produced \
+                            by scikit-allel's `vcf_to_zarr( )` function. `.popvae.hdf5`\
+                            files store filtered genotypes from previous runs (i.e. \
+                            from --save_allele_counts).")
+    parser.add_argument("--out",default="vae",
+                        help="path for saving output")
+    parser.add_argument("--patience",default=50,type=int,
+                        help="training patience. default=50")
+    parser.add_argument("--max_epochs",default=500,type=int,
+                        help="max training epochs. default=500")
+    parser.add_argument("--batch_size",default=32,type=int,
+                        help="batch size. default=32")
+    parser.add_argument("--save_allele_counts",default=False,action="store_true",
+                        help="save allele counts and and sample IDs to \
+                        out+'.popvae.hdf5'.")
+    parser.add_argument("--save_weights",default=False,action="store_true",
+                        help="save model weights to out+weights.hdf5.")
+    parser.add_argument("--seed",default=None,type=int,help="random seed. \
+                                                            default: None")
+    parser.add_argument("--train_prop",default=0.9,type=float,
+                        help="proportion of samples to use for training \
+                            (vs validation). default: 0.9")
+    parser.add_argument("--search_network_sizes",default=False,action="store_true",
+                        help='run grid search over network sizes and use the network with \
+                            minimum validation loss. default: False. ')
+    parser.add_argument("--width_range",default="32,64,128,256,512",type=str,
+                        help='range of hidden layer widths to test when `--search_network_sizes` is called.\
+                            Should be a comma-delimited list with no spaces. Default: 32,64,128,256,512')
+    parser.add_argument("--depth_range",default="3,6,10,20",type=str,
+                        help='range of network depths to test when `--search_network_sizes` is called.\
+                            Should be a comma-delimited list with no spaces. Default: 4,6,8,10')
+    parser.add_argument("--depth",default=6,type=int,
+                        help='number of hidden layers. default=6.')
+    parser.add_argument("--width",default=128,type=int,
+                        help='nodes per hidden layer. default=128')
+    parser.add_argument("--gpu_number",default='0',type=str,
+                        help='gpu number to use for training (try `gpustat` to get GPU numbers).\
+                            Use ` --gpu_number "" ` to run on CPU, and  \
+                            ` --parallel --gpu_number 0,1,2,3` to split batches across 4 GPUs.\
+                            default: 0')
+    parser.add_argument("--prediction_freq",default=5,type=int,
+                        help="print predictions during training every \
+                            --prediction_freq epochs. default: 10")
+    parser.add_argument("--max_SNPs",default=None,type=int,
+                        help="If not None, randomly select --max_SNPs variants \
+                            to run. default: None")
+    parser.add_argument("--latent_dim",default=2,type=int,
+                        help="N latent dimensions to fit. default: 2")
+    parser.add_argument("--PCA",default=False,action="store_true",
+                        help="Run PCA on the derived allele count matrix in scikit-allel.")
+    parser.add_argument("--n_pc_axes",default=20,type=int,
+                        help="Number of PC axes to save in output. default: 20")
+    parser.add_argument("--PCA_scaler",default="Patterson",type=str,
+                        help="How should allele counts be scaled prior to running the PCA?. \
+                            Options: 'None' (mean-center the data but do not scale sites), \
+                            'Patterson' (mean-center then apply the scaling described in Eq 3 of Patterson et al. 2006, Plos Gen)\
+                            default: Patterson. See documentation of allel.pca for further information.")
+    parser.add_argument("--plot",default=False,action="store_true",
+                        help="generate an interactive scatterplot of the latent space. requires --metadata. Run python scripts/plotvae.py --h for customizations")
+    parser.add_argument("--metadata",default=None,
+                        help="path to tab-delimited metadata file with column 'sampleID'.")
+    args=parser.parse_args()
 
-infile=args.infile
-save_allele_counts=args.save_allele_counts
-patience=args.patience
-batch_size=args.batch_size
-max_epochs=args.max_epochs
-seed=args.seed
-save_weights=args.save_weights
-train_prop=args.train_prop
-gpu_number=args.gpu_number
-out=args.out
-prediction_freq=args.prediction_freq
-max_SNPs=args.max_SNPs
-latent_dim=args.latent_dim
-PCA=args.PCA
-PCA_scaler=args.PCA_scaler
-depth=args.depth
-width=args.width
-n_pc_axes=args.n_pc_axes
-search_network_sizes=args.search_network_sizes
-plot=args.plot
-metadata=args.metadata
+    infile=args.infile
+    save_allele_counts=args.save_allele_counts
+    patience=args.patience
+    batch_size=args.batch_size
+    max_epochs=args.max_epochs
+    seed=args.seed
+    save_weights=args.save_weights
+    train_prop=args.train_prop
+    gpu_number=args.gpu_number
+    out=args.out
+    prediction_freq=args.prediction_freq
+    max_SNPs=args.max_SNPs
+    latent_dim=args.latent_dim
+    PCA=args.PCA
+    PCA_scaler=args.PCA_scaler
+    depth=args.depth
+    width=args.width
+    n_pc_axes=args.n_pc_axes
+    search_network_sizes=args.search_network_sizes
+    plot=args.plot
+    metadata=args.metadata
 
-depth_range=args.depth_range
-depth_range=np.array([int(x) for x in re.split(",",depth_range)])
-width_range=args.width_range
-width_range=np.array([int(x) for x in re.split(",",width_range)])
+    depth_range=args.depth_range
+    depth_range=np.array([int(x) for x in re.split(",",depth_range)])
+    width_range=args.width_range
+    width_range=np.array([int(x) for x in re.split(",",width_range)])
 
-if args.plot:
-    if args.metadata==None:
-        print("ERROR: `--plot` argument requires `--metadata`")
-        exit()
+    if args.plot:
+        if args.metadata==None:
+            print("ERROR: `--plot` argument requires `--metadata`")
+            exit()
 
-os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
 
-if not seed==None:
-    os.environ['PYTHONHASHSEED']=str(seed)
-    random.seed(seed)
-    np.random.seed(seed)
-    tensorflow.set_random_seed(seed)
+def load_genotypes(infile):
+    print("\nLoading Genotypes")
+    if infile.endswith('.zarr'):
+        
+    elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
 
-print("\nloading genotypes")
-if infile.endswith('.zarr'):
+    elif infile.endswith('.popvae.hdf5'):
+
+def load_zarr(infile):
     callset = zarr.open_group(infile, mode='r')
     gt = callset['calldata/GT']
     gen = allel.GenotypeArray(gt[:])
     samples = callset['samples'][:]
-elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
+    
+    return gt, gen, samples
+
+def load_vcf(infile):
     vcf=allel.read_vcf(infile,log=sys.stderr)
     gen=allel.GenotypeArray(vcf['calldata/GT'])
     samples=vcf['samples']
-elif infile.endswith('.popvae.hdf5'):
+
+    return gen, samples
+
+def load_hdf5(infile):
     h5=h5py.File(infile,'r')
     dc=np.array(h5['derived_counts'])
     samples=np.array(h5['samples'])
     h5.close()
+
+    return dc, samples
+
+
 
 #snp filters
 if not infile.endswith('.popvae.hdf5'):
@@ -138,6 +150,8 @@ if not infile.endswith('.popvae.hdf5'):
     ac_all=gen.count_alleles() #count of alleles per snp
     ac=gen.to_allele_counts() #count of alleles per snp per individual
 
+
+def drop_non_biallelic_sites(ac_all)
     print("dropping non-biallelic sites")
     biallel=ac_all.is_biallelic()
     dc_all=ac_all[biallel,1] #derived alleles per snp
@@ -305,6 +319,7 @@ def sampling(args):
                               mean=0., stddev=1.,seed=seed)
     return z_mean + K.exp(z_log_var) * epsilon
 
+def build_encoder()
 #encoder
 input_seq = keras.Input(shape=(traingen.shape[1],))
 x=layers.Dense(width,activation="elu")(input_seq)
@@ -416,7 +431,8 @@ pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
 if not save_weights:
     subprocess.check_output(['rm',out+"_weights.hdf5"])
 
-if PCA:
+def run_PCA(dc, pcdata, PCA_scaler, n_pc_axes
+    if PCA:
     pcdata=np.transpose(dc)
     t1=time.time()
     print("running PCA")
@@ -430,25 +446,45 @@ if PCA:
     pcatime=t2-t1
     print("PCA run time: "+str(pcatime)+" seconds")
 
-######### plots #########
-#training history
-#plt.switch_backend('agg')
-fig = plt.figure(figsize=(3,1.5),dpi=200)
-plt.rcParams.update({'font.size': 7})
-ax1=fig.add_axes([0,0,1,1])
-ax1.plot(history.history['val_loss'][3:],"--",color="black",lw=0.5,label="Validation Loss")
-ax1.plot(history.history['loss'][3:],"-",color="black",lw=0.5,label="Training Loss")
-ax1.set_xlabel("Epoch")
-#ax1.set_yscale('log')
-ax1.legend()
-fig.savefig(out+"_history.pdf",bbox_inches='tight')
+def plot_history(history):
+    #training history
+    #plt.switch_backend('agg')
+    fig = plt.figure(figsize=(3,1.5),dpi=200)
+    plt.rcParams.update({'font.size': 7})
+    ax1=fig.add_axes([0,0,1,1])
+    ax1.plot(history.history['val_loss'][3:],"--",color="black",lw=0.5,label="Validation Loss")
+    ax1.plot(history.history['loss'][3:],"-",color="black",lw=0.5,label="Training Loss")
+    ax1.set_xlabel("Epoch")
+    #ax1.set_yscale('log')
+    ax1.legend()
+    fig.savefig(out+"_history.pdf",bbox_inches='tight')
 
-if PCA:
-    timeout=np.array([vaetime,pcatime])
-    np.savetxt(X=timeout,fname=out+"_runtimes.txt")
+def plot_PCA(vaetime, pcatime, out):
+    if PCA:
+        timeout=np.array([vaetime,pcatime])
+        np.savetxt(X=timeout,fname=out+"_runtimes.txt")
 
-if plot:
+def run_plotter(out, metadata):
     subprocess.run("python scripts/plotvae.py --latent_coords "+out+'_latent_coords.txt'+' --metadata '+metadata,shell=True)
+
+def main():
+
+    os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
+
+    if not seed==None:
+        os.environ['PYTHONHASHSEED']=str(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        tensorflow.set_random_seed(seed)
+
+    if PCA:
+        plot_PCA(vaetime, pcatime, out)
+
+    if plot:
+        run_plotter(out, metadata)
+
+if __name__ == "__main__":
+    main()
 
 # ###debugging parameters
 # os.chdir("/Users/cj/popvae/")
