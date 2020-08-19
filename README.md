@@ -5,7 +5,7 @@
 # Summary
 popVAE fits a variational autoencoder (VAE) to a set of genotypes and outputs the latent space.
 
-A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at: ?coming soon?
+A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at https://doi.org/10.1101/2020.08.12.248278 
 
 # Install
 Popvae requires python 3.7 and tensorflow 1.15. We recommend you first install miniconda3 (https://docs.conda.io/en/latest/miniconda.html), then install in a new environment. 
