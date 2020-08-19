@@ -78,40 +78,44 @@ def parse_arguments():
                         help="path to tab-delimited metadata file with column 'sampleID'.")
     args=parser.parse_args()
 
-    infile=args.infile
-    save_allele_counts=args.save_allele_counts
-    patience=args.patience
-    batch_size=args.batch_size
-    max_epochs=args.max_epochs
-    seed=args.seed
-    save_weights=args.save_weights
-    train_prop=args.train_prop
-    gpu_number=args.gpu_number
-    out=args.out
-    prediction_freq=args.prediction_freq
-    max_SNPs=args.max_SNPs
-    latent_dim=args.latent_dim
-    PCA=args.PCA
-    PCA_scaler=args.PCA_scaler
-    depth=args.depth
-    width=args.width
-    n_pc_axes=args.n_pc_axes
-    search_network_sizes=args.search_network_sizes
-    plot=args.plot
-    metadata=args.metadata
+    user_args = {
+        'infile': args.infile
+        'save_allele_counts': args.save_allele_counts,
+        'patience': args.patience,
+        'batch_size': args.batch_size,
+        'max_epochs': args.max_epochs,
+        'seed': args.seed,
+        'save_weights': args.save_weights,
+        'train_prop': args.train_prop,
+        'gpu_number': args.gpu_number,
+        'out': args.out,
+        'prediction_freq': args.prediction_freq,
+        'max_SNPs': args.max_SNPs,
+        'latent_dim': args.latent_dim,
+        'PCA': args.PCA,
+        'PCA_scaler': args.PCA_scaler,
+        'depth': args.depth,
+        'width': args.width,
+        'n_pc_axes': args.n_pc_axes,
+        'search_network_sizes': args.search_network_sizes,
+        'plot': args.plot,
+        'metadata': args.metadata
+        'depth_range': args.depth_range
+        'width_range': args.width_range
+    }
 
-    depth_range=args.depth_range
-    depth_range=np.array([int(x) for x in re.split(",",depth_range)])
-    width_range=args.width_range
-    width_range=np.array([int(x) for x in re.split(",",width_range)])
+    user_args['depth_range']=np.array([int(x) for x in re.split(",", user_args['depth_range'])])
+    user_args['width_range']=np.array([int(x) for x in re.split(",", user_args['width_range'])])
 
     if args.plot:
         if args.metadata==None:
             print("ERROR: `--plot` argument requires `--metadata`")
             exit()
 
+    return user_args
 
 def load_genotypes(infile):
+    
     print("\nLoading Genotypes")
     if infile.endswith('.zarr'):
         
@@ -120,6 +124,16 @@ def load_genotypes(infile):
     elif infile.endswith('.popvae.hdf5'):
 
 def load_zarr(infile):
+    """Loads zarr filetype
+
+    Args:
+        infile (str): Filename
+
+    Returns:
+        genotype callset: genotype callset
+        gen: genotype array
+        ndarray: samples
+    """
     callset = zarr.open_group(infile, mode='r')
     gt = callset['calldata/GT']
     gen = allel.GenotypeArray(gt[:])
@@ -128,6 +142,15 @@ def load_zarr(infile):
     return gt, gen, samples
 
 def load_vcf(infile):
+    """Loads vcf file
+
+    Args:
+        infile (str): Filename
+
+    Returns:
+        genotype array: allel Genotype array object
+        ndarray: samples
+    """
     vcf=allel.read_vcf(infile,log=sys.stderr)
     gen=allel.GenotypeArray(vcf['calldata/GT'])
     samples=vcf['samples']
@@ -135,6 +158,15 @@ def load_vcf(infile):
     return gen, samples
 
 def load_hdf5(infile):
+    """Loads hdf5 file
+
+    Args:
+        infile (str): Filename
+
+    Returns:
+        ndarray: derived counts
+        ndarray: samples
+    """
     h5=h5py.File(infile,'r')
     dc=np.array(h5['derived_counts'])
     samples=np.array(h5['samples'])
@@ -142,22 +174,34 @@ def load_hdf5(infile):
 
     return dc, samples
 
+def get_allele_counts(gen):
+    """Gets allele counts per-snp and per-snp-per-individual from genotypes
 
+    Args:
+        gen (genotype array): allel genotype array object
 
-#snp filters
-if not infile.endswith('.popvae.hdf5'):
-    print("counting alleles")
-    ac_all=gen.count_alleles() #count of alleles per snp
-    ac=gen.to_allele_counts() #count of alleles per snp per individual
+    Returns:
+        ndarray: ac, allele count array per snp
+        ndarray: ac_all, allele count array per snp per individual
+    """
+    #snp filters
+    if not infile.endswith('.popvae.hdf5'):
+        print("counting alleles")
+        ac_all=gen.count_alleles() #count of alleles per snp
+        ac=gen.to_allele_counts() #count of alleles per snp per individual
 
+    return ac, ac_all
 
-def drop_non_biallelic_sites(ac_all)
+def drop_non_biallelic_sites(ac, ac_all)
     print("dropping non-biallelic sites")
     biallel=ac_all.is_biallelic()
     dc_all=ac_all[biallel,1] #derived alleles per snp
     dc=np.array(ac[biallel,:,1],dtype="int_") #derived alleles per individual
     missingness=gen[biallel,:,:].is_missing()
 
+    return missingness, dc
+
+def drop_singletons(missingness, dc_all)
     print("dropping singletons")
     ninds=np.array([np.sum(x) for x in ~missingness])
     singletons=np.array([x<=2 for x in dc_all])
@@ -166,6 +210,7 @@ def drop_non_biallelic_sites(ac_all)
     ninds=ninds[~singletons]
     missingness=missingness[~singletons,:]
 
+def impute_dc(dc, dc_all, missingness)
     print("filling missing data with rbinom(2,derived_allele_frequency)")
     af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])])
     for i in tqdm(range(np.shape(dc)[1])):
@@ -175,6 +220,9 @@ def drop_non_biallelic_sites(ac_all)
     dc=np.transpose(dc)
     dc=dc*0.5 #0=homozygous reference, 0.5=heterozygous, 1=homozygous alternate
 
+    return dc
+
+def save_hdf5(save_allele_counts, infile, prune_LD, dc, samples):
     #save hdf5 for reanalysis
     if save_allele_counts and not infile.endswith('.popvae.hdf5'):
         print("saving derived counts for reanalysis")
@@ -186,34 +234,40 @@ def drop_non_biallelic_sites(ac_all)
         outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
         outfile.close()
 
-if not max_SNPs==None:
-    print("subsetting to "+str(max_SNPs)+" SNPs")
-    dc=dc[:,np.random.choice(range(dc.shape[1]),max_SNPs,replace=False)]
+def subset_to_max_snps(max_SNPs, dc):
+    if not max_SNPs==None:
+        print("subsetting to "+str(max_SNPs)+" SNPs")
+        dc=dc[:,np.random.choice(range(dc.shape[1]),max_SNPs,replace=False)]
+    
+    return dc
 
-print("running train/test splits")
-ninds=dc.shape[0]
-if train_prop==1:
-    train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
-    test=train
-    traingen=dc[train,:]
-    testgen=dc[test,:]
-    trainsamples=samples[train]
-    testsamples=samples[test]
-else:
-    train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
-    test=np.array([x for x in range(ninds) if x not in train])
-    traingen=dc[train,:]
-    testgen=dc[test,:]
-    trainsamples=samples[train]
-    testsamples=samples[test]
+def split_training_data(dc, samples, train_prop)
+    print("running train/test splits")
+    ninds=dc.shape[0]
+    if train_prop==1:
+        train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
+        test=train
+        traingen=dc[train,:]
+        testgen=dc[test,:]
+        trainsamples=samples[train]
+        testsamples=samples[test]
+    else:
+        train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
+        test=np.array([x for x in range(ninds) if x not in train])
+        traingen=dc[train,:]
+        testgen=dc[test,:]
+        trainsamples=samples[train]
+        testsamples=samples[test]
 
-print('validation samples:'+testsamples)
-print('running on '+str(dc.shape[1])+" SNPs")
+    print('Validation Samples:'+ testsamples +'\n')
+    print('Running on '+str(dc.shape[1])+" SNPs")
 
-#grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
-if search_network_sizes:
+    return trainsamples, testsamples, traingen, testgen
+
+def grid_search(depth_range, width_range, patience, search_network_sizes)
+    #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
     print('running grid search on network sizes')
-    tmp_patience = patience / 4
+    grid_patience = patience / 4
 
     #get parameter combinations (will need to rework this for >2 params)
     paramsets=[[x,y] for x in width_range for y in depth_range]
@@ -226,84 +280,116 @@ if search_network_sizes:
 
     #params=paramsets[0]
     for params in tqdm(paramsets):
-        tmpwidth=params[0]
-        tmpdepth=params[1]
-        print('width='+str(tmpwidth)+'\ndepth='+str(tmpdepth))
+        width=params[0]
+        depth=params[1]
+        print('width='+str(width)+'\ndepth='+str(depth))
 
-        #load model
-        def sampling(args):
-            z_mean, z_log_var = args
-            epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
-                                      mean=0., stddev=1.)
-            return z_mean + K.exp(z_log_var) * epsilon
+    return width, depth, param_losses, grid_patience
 
-        #encoder
-        input_seq = keras.Input(shape=(traingen.shape[1],))
-        x=layers.Dense(tmpwidth,activation="elu")(input_seq)
-        for i in range(tmpdepth-1):
-            x=layers.Dense(tmpwidth,activation="elu")(x)
-        z_mean=layers.Dense(latent_dim)(x)
-        z_log_var=layers.Dense(latent_dim)(x)
-        z = layers.Lambda(sampling,output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
-        encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
+def sampling(args):
+    z_mean, z_log_var = args
+    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
+                              mean=0., stddev=1.)
+    return z_mean + K.exp(z_log_var) * epsilon
 
-        #decoder
-        decoder_input=layers.Input(shape=(latent_dim,),name='z_sampling')
-        x=layers.Dense(tmpwidth,activation="linear")(decoder_input)#was elu
-        for i in range(tmpdepth-1):
-            x=layers.Dense(tmpwidth,activation="elu")(x)
-        output=layers.Dense(traingen.shape[1],activation="sigmoid")(x) #hard sigmoid seems natural here but appears to lead to more left-skewed decoder outputs.
-        decoder=Model(decoder_input,output,name='decoder')
+def create_vae(traingen, width, latent_dim, sampling)
+    #encoder
+    input_seq = keras.Input(shape=(traingen.shape[1],))
+    x=layers.Dense(width,activation="elu")(input_seq)
+    for i in range(depth-1):
+        x=layers.Dense(width,activation="elu")(x)
+    z_mean=layers.Dense(latent_dim)(x)
+    z_log_var=layers.Dense(latent_dim)(x)
+    z = layers.Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
+    encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
 
-        #end-to-end vae
-        output_seq = decoder(encoder(input_seq)[2])
-        vae = Model(input_seq, output_seq, name='vae')
+    #decoder
+    decoder_input=layers.Input(shape=(latent_dim,),name='z_sampling')
+    x=layers.Dense(width,activation="linear")(decoder_input)#was elu
+    for i in range(depth-1):
+        x=layers.Dense(width,activation="elu")(x)
+    output=layers.Dense(traingen.shape[1],activation="sigmoid")(x) #hard sigmoid seems natural here but appears to lead to more left-skewed decoder outputs.
+    decoder=Model(decoder_input,output,name='decoder')
 
-        #get loss as xent_loss+kl_loss
-        reconstruction_loss = keras.losses.binary_crossentropy(input_seq,output_seq)
-        reconstruction_loss *= traingen.shape[1]
-        kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
-        kl_loss = K.sum(kl_loss, axis=-1)
-        kl_loss *= -0.5
-        #kl_loss *= 5 #beta from higgins et al 2017, https://openreview.net/pdf?id=Sy2fzU9gl. Deprecated but loss term weighting is a thing to work on.
-        vae_loss = K.mean(reconstruction_loss + kl_loss)
-        vae.add_loss(vae_loss)
+    #end-to-end vae
+    output_seq = decoder(encoder(input_seq)[2])
+    vae = Model(input_seq, output_seq, name='vae')
 
-        vae.compile(optimizer='adam')
+    return vae, input_seq, output_seq
 
-        checkpointer=keras.callbacks.ModelCheckpoint(
-                      filepath=out+"_weights.hdf5",
-                      verbose=0,
-                      save_best_only=True,
-                      monitor="val_loss",
-                      period=1)
+def calculate_loss(input_seq, output_seq, vae)
+    #get loss as xent_loss+kl_loss
+    reconstruction_loss = keras.losses.binary_crossentropy(input_seq,output_seq)
+    reconstruction_loss *= traingen.shape[1]
+    kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+    kl_loss = K.sum(kl_loss, axis=-1)
+    kl_loss *= -0.5
+    #kl_loss *= 5 #beta from higgins et al 2017, https://openreview.net/pdf?id=Sy2fzU9gl. Deprecated but loss term weighting is a thing to work on.
+    vae_loss = K.mean(reconstruction_loss + kl_loss)
+    vae.add_loss(vae_loss)
 
-        earlystop=keras.callbacks.EarlyStopping(monitor="val_loss",
+    return vae
+
+def train_model(vae, out, grid_patience, print_predictions)
+    vae.compile(optimizer='adam')
+
+    checkpointer=keras.callbacks.ModelCheckpoint(
+                    filepath=out+"_weights.hdf5",
+                    verbose=2,
+                    save_best_only=True,
+                    monitor="val_loss",
+                    period=1)
+
+    earlystop=keras.callbacks.EarlyStopping(monitor="val_loss",
+                                            min_delta=0,
+                                            patience=grid_patience)
+
+    reducelr=keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
+                                                factor=0.5,
+                                                patience=int(grid_patience/4), # This is being divided by 4 twice? Is that supposed to be the case?
+                                                verbose=0,
+                                                mode='auto',
                                                 min_delta=0,
-                                                patience=tmp_patience)
+                                                cooldown=0,
+                                                min_lr=0)
 
-        reducelr=keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                   factor=0.5,
-                                                   patience=int(tmp_patience/4),
-                                                   verbose=0,
-                                                   mode='auto',
-                                                   min_delta=0,
-                                                   cooldown=0,
-                                                   min_lr=0)
-        history=vae.fit(x=traingen,
-                        y=None,
-                        shuffle=True,
-                        verbose=0,
-                        epochs=int(max_epochs/4),
-                        callbacks=[checkpointer,earlystop,reducelr],
-                        validation_data=(testgen,None),
-                        batch_size=batch_size)
-        minloss=np.min(history.history['val_loss'])
-        row=np.transpose(pd.DataFrame([tmpwidth,tmpdepth,minloss]))
-        row.columns=['width','depth','val_loss']
-        param_losses=param_losses.append(row,ignore_index=True)
-        K.clear_session() #maybe solves the gpu memory issue(???)
+    t1=time.time()
+    history=vae.fit(x=traingen,
+                    y=None,
+                    shuffle=True,
+                    verbose=2,
+                    epochs=int(max_epochs/4),
+                    callbacks=[checkpointer,earlystop,reducelr,print_predictions],
+                    validation_data=(testgen,None),
+                    batch_size=batch_size)
+    t2=time.time()
+    vaetime=t2-t1
+    print("VAE run time: "+str(vaetime)+" seconds")
 
+    return history
+
+def create_print_pred_callback(encoder, dc, samples, batch_size, epoch, prediction_freq):
+    print_predictions=keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch,
+            logs:saveLDpos(encoder=encoder,
+                            predgen=dc,
+                            samples=samples,
+                            batch_size=batch_size,
+                            epoch=epoch,
+                            frequency=prediction_freq))
+
+    return print_predictions
+
+def calc_losses(history, width, depth):
+    minloss=np.min(history.history['val_loss'])
+    row=np.transpose(pd.DataFrame([tmpwidth,tmpdepth,minloss]))
+    row.columns=['width','depth','val_loss']
+    param_losses=param_losses.append(row,ignore_index=True)
+    K.clear_session() #maybe solves the gpu memory issue(???)
+
+    return param_losses
+
+def get_best_losses(param_losses):
     #save tests and get min val_loss parameter set
     print(param_losses)
     param_losses.to_csv(out+"_param_grid.csv",index=False,header=True)
@@ -312,68 +398,13 @@ if search_network_sizes:
     depth=int(bestparams['depth'])
     print('best parameters:\nwidth = '+str(width)+'\ndepth = '+str(depth))
 
-#load model
+    return width, depth
+
 def sampling(args):
     z_mean, z_log_var = args
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
                               mean=0., stddev=1.,seed=seed)
     return z_mean + K.exp(z_log_var) * epsilon
-
-def build_encoder()
-#encoder
-input_seq = keras.Input(shape=(traingen.shape[1],))
-x=layers.Dense(width,activation="elu")(input_seq)
-for i in range(depth-1):
-    x=layers.Dense(width,activation="elu")(x)
-z_mean=layers.Dense(latent_dim)(x)
-z_log_var=layers.Dense(latent_dim)(x)
-z = layers.Lambda(sampling,output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
-encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
-
-#decoder
-decoder_input=layers.Input(shape=(latent_dim,),name='z_sampling')
-x=layers.Dense(width,activation="linear")(decoder_input)#was elu
-for i in range(depth-1):
-    x=layers.Dense(width,activation="elu")(x)
-output=layers.Dense(traingen.shape[1],activation="sigmoid")(x) #hard sigmoid seems natural here but appears to lead to more left-skewed decoder outputs.
-decoder=Model(decoder_input,output,name='decoder')
-
-#end-to-end vae
-output_seq = decoder(encoder(input_seq)[2])
-vae = Model(input_seq, output_seq, name='vae')
-
-#get loss as xent_loss+kl_loss
-reconstruction_loss = keras.losses.binary_crossentropy(input_seq,output_seq)
-reconstruction_loss *= traingen.shape[1]
-kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
-kl_loss = K.sum(kl_loss, axis=-1)
-kl_loss *= -0.5
-#kl_loss *= 5
-vae_loss = K.mean(reconstruction_loss + kl_loss)
-vae.add_loss(vae_loss)
-
-vae.compile(optimizer='adam')
-
-#callbacks
-checkpointer=keras.callbacks.ModelCheckpoint(
-              filepath=out+"_weights.hdf5",
-              verbose=1,
-              save_best_only=True,
-              monitor="val_loss",
-              period=1)
-
-earlystop=keras.callbacks.EarlyStopping(monitor="val_loss",
-                                        min_delta=0,
-                                        patience=patience)
-
-reducelr=keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                           factor=0.5,
-                                           patience=int(patience/4),
-                                           verbose=1,
-                                           mode='auto',
-                                           min_delta=0,
-                                           cooldown=0,
-                                           min_lr=0)
 
 def saveLDpos(encoder,predgen,samples,batch_size,epoch,frequency):
     if(epoch%frequency==0):
@@ -386,50 +417,27 @@ def saveLDpos(encoder,predgen,samples,batch_size,epoch,frequency):
         else:
             pred.to_csv(out+"_training_preds.txt",sep='\t',index=False,mode='a',header=False)
 
-print_predictions=keras.callbacks.LambdaCallback(
-         on_epoch_end=lambda epoch,
-         logs:saveLDpos(encoder=encoder,
-                        predgen=dc,
-                        samples=samples,
-                        batch_size=batch_size,
-                        epoch=epoch,
-                        frequency=prediction_freq))
+def save_training_history(history, out):
+    #save training history
+    h=pd.DataFrame(history.history)
+    h.to_csv(out+"_history.txt",sep="\t")
 
-#training
-t1=time.time()
-history=vae.fit(x=traingen,
-                y=None,
-                shuffle=True,
-                epochs=max_epochs,
-                callbacks=[checkpointer,earlystop,reducelr,print_predictions],
-                validation_data=(testgen,None),
-                batch_size=batch_size)
-t2=time.time()
-vaetime=t2-t1
-print("VAE run time: "+str(vaetime)+" seconds")
-
-#save training history
-h=pd.DataFrame(history.history)
-h.to_csv(out+"_history.txt",sep="\t")
-
-#predict latent space coords for all samples from weights minimizing val loss
-vae.load_weights(out+"_weights.hdf5")
-pred=encoder.predict(dc,batch_size=batch_size) #returns [mean,sd,sample] for individual distributions in latent space
-p=pd.DataFrame()
-if latent_dim==2:
-    p['mean1']=pred[0][:,0]
-    p['mean2']=pred[0][:,1]
-    p['sd1']=pred[1][:,0]
-    p['sd2']=pred[1][:,1]
-    pred=p
-else:
-    pred=pd.DataFrame(pred[0])
-    pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
-pred['sampleID']=samples
-pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
-
-if not save_weights:
-    subprocess.check_output(['rm',out+"_weights.hdf5"])
+def predict_latent_coords(vae, encoder, dc, batch_size, latent_dim, samples):
+    #predict latent space coords for all samples from weights minimizing val loss
+    vae.load_weights(out+"_weights.hdf5")
+    pred=encoder.predict(dc,batch_size=batch_size) #returns [mean,sd,sample] for individual distributions in latent space
+    p=pd.DataFrame()
+    if latent_dim==2:
+        p['mean1']=pred[0][:,0]
+        p['mean2']=pred[0][:,1]
+        p['sd1']=pred[1][:,0]
+        p['sd2']=pred[1][:,1]
+        pred=p
+    else:
+        pred=pd.DataFrame(pred[0])
+        pred.columns=['LD'+str(x+1) for x in range(len(pred.columns))]
+    pred['sampleID']=samples
+    pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
 
 def run_PCA(dc, pcdata, PCA_scaler, n_pc_axes
     if PCA:
@@ -482,6 +490,16 @@ def main():
 
     if plot:
         run_plotter(out, metadata)
+
+    if not save_weights:
+        subprocess.check_output(['rm',out+"_weights.hdf5"])
+
+
+
+
+
+    if search_network_sizes:
+        grid_search()
 
 if __name__ == "__main__":
     main()
