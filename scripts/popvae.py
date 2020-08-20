@@ -26,6 +26,7 @@ from tqdm import tqdm
 
 
 def parse_arguments():
+    #TODO maybe think about making this a tsv input? That's a lot of parameters
     parser=argparse.ArgumentParser()
     parser.add_argument("--infile",
                         help="path to input genotypes in vcf (.vcf | .vcf.gz), \
@@ -128,14 +129,29 @@ def parse_arguments():
 
     return user_args
 
-def load_genotypes(infile):
+def load_genotypes(infile, max_SNPs):
     
     print("\nLoading Genotypes")
     if infile.endswith('.zarr'):
-        
+        gen, samples = load_zarr(infile)
+        ac, ac_all = get_allele_counts(gen)
+        missingness, dc, dc_all = drop_non_biallelic_sites(ac, ac_all)
+        dc, missingness = drop_singletons(missingness, dc_all)
+        dc = subset_to_max_snps(max_SNPs, dc)
+        dc = impute_dc(dc, dc_all, missingness)
+
     elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
+        gen, samples = load_vcf(infile)
+        ac, ac_all = get_allele_counts(gen)
+        missingness, dc, dc_all = drop_non_biallelic_sites(ac, ac_all)
+        dc, missingness = drop_singletons(missingness, dc_all)
+        dc = subset_to_max_snps(max_SNPs, dc)
+        dc = impute_dc(dc, dc_all, missingness)
 
     elif infile.endswith('.popvae.hdf5'):
+        dc, samples = load_hdf5(infile)
+
+    return dc, samples
 
 def load_zarr(infile):
     """Loads zarr filetype
@@ -144,7 +160,6 @@ def load_zarr(infile):
         infile (str): Filename
 
     Returns:
-        genotype callset: genotype callset
         gen: genotype array
         ndarray: samples
     """
@@ -153,7 +168,7 @@ def load_zarr(infile):
     gen = allel.GenotypeArray(gt[:])
     samples = callset['samples'][:]
     
-    return gt, gen, samples
+    return gen, samples
 
 def load_vcf(infile):
     """Loads vcf file
@@ -216,6 +231,7 @@ def drop_non_biallelic_sites(ac, ac_all):
     Returns:
         ndarray: Biallelic sites that are missing from dataset
         ndarray: Derived counts with just biallelic sites
+        ndarray: Derived counts from all individs
     """
     print("Dropping non-biallelic sites")
     biallel=ac_all.is_biallelic()
@@ -223,7 +239,7 @@ def drop_non_biallelic_sites(ac, ac_all):
     dc=np.array(ac[biallel,:,1],dtype="int_") #derived alleles per individual
     missingness=gen[biallel,:,:].is_missing()
 
-    return missingness, dc
+    return missingness, dc, dc_all
 
 def drop_singletons(missingness, dc_all):
     """Drops singletons from derived counts on per-individual basis
@@ -234,9 +250,7 @@ def drop_singletons(missingness, dc_all):
 
     Returns:
         ndarray: derived counts, without singletons
-        ndarray: singletons, that have been filtered out of derived counts and missingness
         ndarray: missingness, without singletons
-        ndarray: ninds, number of indices for imputing derived counts
     """
     print("dropping singletons")
     ninds=np.array([np.sum(x) for x in ~missingness])
@@ -246,7 +260,7 @@ def drop_singletons(missingness, dc_all):
     ninds=ninds[~singletons]
     missingness=missingness[~singletons,:]
 
-    return dc, singletons, missingness, ninds
+    return dc, missingness
 
 def impute_dc(dc, dc_all, missingness):
     """Generate missing derived counts using all counts and binomial distribution
@@ -341,16 +355,38 @@ def split_training_data(dc, samples, train_prop):
     return trainsamples, testsamples, traingen, testgen
 
 def sampling(args):
-    """A Lambda function
-       Too much statistics for me
-       Enjoy this haiku
+    """A Lambda function \n
+       Too much statistics for me \n 
+       Enjoy this haiku\n
     """
     z_mean, z_log_var = args
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
                               mean=0., stddev=1.)
     return z_mean + K.exp(z_log_var) * epsilon
 
-def create_encoder(traingen, width, depth, latent_dim, sampling):
+def saveLDpos(encoder, predgen, samples, batch_size, epoch, frequency):
+    """Runs predictions from encoder and saves latent space to csv
+    Logging function for Keras
+
+    Args:
+        encoder (keras model): Trained encoder model
+        predgen (ndarray): Genotypes to predict latent space from ??????
+        samples (ndarray): Samples
+        batch_size (int): Batch size
+        epoch (int): Number of epochs to run predictions for
+        frequency (int): How often to save predictions
+    """
+    if(epoch%frequency==0):
+        pred=encoder.predict(predgen,batch_size=batch_size)[0]
+        pred=pd.DataFrame(pred)
+        pred['sampleID']=samples
+        pred['epoch']=epoch
+        if(epoch==0):
+            pred.to_csv(out+"_training_preds.txt",sep='\t',index=False,mode='w',header=True)
+        else:
+            pred.to_csv(out+"_training_preds.txt",sep='\t',index=False,mode='a',header=False)
+
+def create_encoder(traingen, width, depth, latent_dim):
     """Builds encoder network for first half of VAE
 
     Args:
@@ -358,7 +394,6 @@ def create_encoder(traingen, width, depth, latent_dim, sampling):
         width (int): Width of network
         depth (int): Depth of network
         latent_dim (int): Latent dimensions to use
-        sampling (func): Lambda func
 
     Returns:
         keras model: built encoder model
@@ -369,7 +404,7 @@ def create_encoder(traingen, width, depth, latent_dim, sampling):
         x=layers.Dense(width,activation="elu")(x)
     z_mean=layers.Dense(latent_dim)(x)
     z_log_var=layers.Dense(latent_dim)(x)
-    z = layers.Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
+    z = layers.Lambda(sampling(), output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
     encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
 
     return encoder
@@ -382,7 +417,7 @@ def create_vae(traingen, width, depth, latent_dim, sampling, encoder):
         width (int): Width of net (number of nodes per layer)
         depth (int): Depth of net (number of layers)
         latent_dim (int): Dimensionality of latent space
-        sampling (func): Function call for lambda function sampling()
+        sampling (func): Function call for  function sampling()
         encoder (keras model): Built encoder model to use for first half of VAE
 
     Returns:
@@ -431,17 +466,17 @@ def add_loss_function(vae, input_seq, output_seq):
     return vae
 
 def train_model(vae, out, grid_patience, print_predictions):
-    """Trains model
-
+    """Trains given VAE model
 
     Args:
         vae (keras model): Built keras model with custom loss function
         out (str): Output filename
         grid_patience (int): Patience to use for early stopping of val_loss
-        print_predictions (func): Lambda function for callback
+        print_predictions (func): Function for callback
 
     Returns:
         keras history: History object from best model
+        keras model: fitted VAE model
     """
     vae.compile(optimizer='adam')
 
@@ -478,24 +513,24 @@ def train_model(vae, out, grid_patience, print_predictions):
     vaetime=t2-t1
     print("VAE run time: "+str(vaetime)+" seconds")
 
-    return history
+    return history, vae
 
-def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq):
-    """Creates lambda callback function using custom parameterization
+def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq, saveLDpos):
+    """Creates callback function using custom parameterization
 
     Args:
         encoder (keras network): Built keras network for encoder portion of VAE
         dc (ndarray): Derived counts
         samples (ndarray): Samples
         batch_size (int): Batch size for training
-        ep
         prediction_freq (int): How often to print predictions
+        saveLDpos (func): Lambda function for logging
 
     Returns:
-        func: Keras callback lambda function
+        func: Keras callback function
     """
     print_predictions=keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch,
+            on_epoch_end= epoch,
             logs:saveLDpos(encoder=encoder,
                             predgen=dc,
                             samples=samples,
@@ -505,13 +540,14 @@ def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq
 
     return print_predictions
 
-def calc_min_losses(history, width, depth):
+def append_min_losses(history, width, depth, param_losses):
     """Gets minimum loss from history and returns to param_losses dataframe
 
     Args:
         history (Keras History): Keras history object for the model just trained
         width (int): Width of model (nodes per layer)
         depth (int): Depth of model (layers)
+        param_losses (pd.df): Losses dataframe to append new minimum loss to
 
     Returns:
         pd.df: Losses from each parameterization
@@ -540,30 +576,116 @@ def get_best_losses(param_losses):
     bestparams=param_losses[param_losses['val_loss']==np.min(param_losses['val_loss'])]
     width=int(bestparams['width'])
     depth=int(bestparams['depth'])
-    print('best parameters:\nwidth = '+str(width)+'\ndepth = '+str(depth))
+    print('Best parameters:\nWidth = '+str(width)+'\nDepth = '+str(depth))
 
     return width, depth
 
-def saveLDpos(encoder, predgen, samples, batch_size, epoch, frequency):
-    """Runs predictions from encoder and saves latent space to csv
+def final_model_run(train_gen, test_gen, train_samples, test_samples, user_args):
+    """What if you're too good for grid search? Then you run this.
+    Same workflow as grid search, just leave out all the reparameterizations
 
     Args:
-        encoder (keras model): Trained encoder model
-        predgen (ndarray): Genotypes to predict latent space from
-        samples (ndarray): Samples
-        batch_size (int): Batch size
-        epoch (int): Number of epochs to run predictions for
-        frequency (int): How often to save predictions
+        depth_range (str): Ranges of depths to test
+        width_range (str): Range of widths to test
+        patience (int): Patience parameter for early stopping
+        train_gen (ndarray): Training genotypes
+        test_gen (ndarray): Testing genotypes
+        train_samples (ndarray): Training samples
+        test_samples (ndarray): Testing samples
+        latent_dim (int): Number of latent dimensions
+        sampling (func): Lambda function for sampling
+        out (str): Output file prefix
+        print_prediction_callback (func): Lambda function for keras callback
+
+    Returns:
+        keras history: History object from best model
+        keras model: fitted VAE model
     """
-    if(epoch%frequency==0):
-        pred=encoder.predict(predgen,batch_size=batch_size)[0]
-        pred=pd.DataFrame(pred)
-        pred['sampleID']=samples
-        pred['epoch']=epoch
-        if(epoch==0):
-            pred.to_csv(out+"_training_preds.txt",sep='\t',index=False,mode='w',header=True)
-        else:
-            pred.to_csv(out+"_training_preds.txt",sep='\t',index=False,mode='a',header=False)
+    encoder = create_encoder(train_gen, user_args['width'], user_args['depth'], user_args['latent_dim'])
+    print_prediction_callback = create_print_pred_callback(encoder, dc, samples,
+                                                            user_args['batch_size'], user_args['prediction_freq'],
+                                                            saveLDpos(encoder, predgen,
+                                                                samples, user_args['batch_size'], 
+                                                                epoch, user_args['pred_frequency']))
+
+    vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args['latent_dim'], sampling())
+    vae = add_loss_function(vae, input_seq, output_seq)
+
+    history, vae = train_model(vae, out, grid_patience, print_prediction_callback)
+    param_losses = append_min_losses(history, width, depth, param_losses)
+    
+    t1=time.time()
+
+    history, vae = train_model(vae, out, patience, print_prediction_callback)
+    t2 = time.time()
+    print("VAE run time: "+str(vaetime)+" seconds")
+
+    return history, vae
+
+def grid_search(train_gen, test_gen, train_samples, test_samples, user_args):
+    """Grid search through network parameterizations
+    - Iterates through next set of parameters
+    - Creates net
+    - Trains net
+    - Gets best losses and spits out optimal width and depth to use for optimal encoder
+
+    Args:
+        depth_range (str): Ranges of depths to test
+        width_range (str): Range of widths to test
+        patience (int): Patience parameter for early stopping
+        train_gen (ndarray): Training genotypes
+        test_gen (ndarray): Testing genotypes
+        train_samples (ndarray): Training samples
+        test_samples (ndarray): Testing samples
+        latent_dim (int): Number of latent dimensions
+        out (str): Output file prefix
+
+    Returns:
+        int: Best width
+        int: Best depth
+
+    TODO: Implement OOB gridsearch here, should be pretty straightfoward to swap this over to an API
+    TODO: Optimize more than 2 hyperparameters, reliant on above for easy implementation
+
+    """
+
+    #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
+    #Wonder if switching to something pre-written would help? Talos, for example?
+    print('Running grid search on network sizes')
+    grid_patience = user_args['patience'] / 4
+
+    #get parameter combinations (will need to rework this for >2 params)
+    # OOB gridsearch will make that ^ very easy -Logan
+    paramsets=[[x,y] for x in user_args['width_range'] for y in user_args['depth_range']]
+
+    #output dataframe
+    param_losses=pd.DataFrame()
+    param_losses['width']=None
+    param_losses['depth']=None
+    param_losses['val_loss']=None
+
+    #params=paramsets[0]
+    for params in tqdm(paramsets):
+        width=params[0]
+        depth=params[1]
+        print('width='+str(width)+'\ndepth='+str(depth))
+
+        encoder = create_encoder(train_gen, user_args['width'], user_args['depth'], user_args['latent_dim'])
+        print_prediction_callback = create_print_pred_callback(encoder, dc, samples,
+                                                                user_args['batch_size'], user_args['prediction_freq'],
+                                                                saveLDpos(encoder, predgen,
+                                                                    samples, user_args['batch_size'], 
+                                                                    epoch, user_args['pred_frequency']))
+
+        vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args['latent_dim'], sampling())
+        vae = add_loss_function(vae, input_seq, output_seq)
+
+        history, vae = train_model(vae, out, grid_patience, print_prediction_callback)
+        param_losses = append_min_losses(history, width, depth, param_losses)
+
+    best_width, best_depth = get_best_losses(param_losses)
+
+    return best_width, best_depth
 
 def save_training_history(history, out):
     """Saves history to text file
@@ -576,17 +698,23 @@ def save_training_history(history, out):
     h=pd.DataFrame(history.history)
     h.to_csv(out+"_history.txt",sep="\t")
 
-def predict_latent_coords(vae, encoder, dc, batch_size, latent_dim, samples):
+def predict_latent_coords(dc, batch_size, latent_dim, samples, traingen, width, depth):
     """Get latent space mean and var from trained encoder, write coordinates to csv
 
     Args:
-        vae (keras model): end-to-end trained VAE model
-        encoder (keras model): Encoder part of VAE model
         dc (ndarray): Derived count
         batch_size (int): Batch size for predictions
         latent_dim (int): Latent dimensions to predict for
         samples (ndarray): Samples
+        traingen (ndarray): Training genotypes
+        width (int): Width of net
+        depth (int): Depth of net
+        sampling (func): Lambda func
     """
+
+    encoder = create_encoder(traingen, width, depth, latent_dim)
+    vae = create_vae(traingen, width, depth, latent_dim, sampling(), encoder)
+
     #predict latent space coords for all samples from weights minimizing val loss
     vae.load_weights(out+"_weights.hdf5")
     pred=encoder.predict(dc,batch_size=batch_size) #returns [mean,sd,sample] for individual distributions in latent space
@@ -668,60 +796,8 @@ def run_plotter(out, metadata):
     """
     subprocess.run("python scripts/plotvae.py --latent_coords "+out+'_latent_coords.txt'+' --metadata '+metadata,shell=True)
 
-def grid_search(depth_range, width_range, patience, train_gen, test_gen, train_samples, test_samples, latent_dim, sampling, out, print_prediction_callback):
-    """Grid search through network parameterizations
-    - Iterates through next set of parameters
-    - Creates network
-    - Trains network 
-    - 
-
-    Args:
-        depth_range ([type]): [description]
-        width_range ([type]): [description]
-        patience ([type]): [description]
-        train_gen ([type]): [description]
-        test_gen ([type]): [description]
-        train_samples ([type]): [description]
-        test_samples ([type]): [description]
-        latent_dim ([type]): [description]
-        sampling ([type]): [description]
-        out ([type]): [description]
-        print_prediction_callback ([type]): [description]
-    """
-
-    #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
-    #Wonder if switching to something pre-written would help? Talos, for example?
-    print('Running grid search on network sizes')
-    grid_patience = patience / 4
-
-    #get parameter combinations (will need to rework this for >2 params)
-    paramsets=[[x,y] for x in width_range for y in depth_range]
-
-    #output dataframe
-    param_losses=pd.DataFrame()
-    param_losses['width']=None
-    param_losses['depth']=None
-    param_losses['val_loss']=None
-
-
-    #params=paramsets[0]
-    for params in tqdm(paramsets):
-        width=params[0]
-        depth=params[1]
-        print('width='+str(width)+'\ndepth='+str(depth))
-
-        encoder = create_encoder(train_gen, width, depth, latent_dim, sampling)
-        print_prediction_callback = create_print_pred_callback(encoder)
-
-        vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, latent_dim, sampling)
-        vae = add_loss_function(vae, input_seq, output_seq)
-        history = train_model(vae, out, grid_patience, print_prediction_callback)
-
-    get_best_losses(param_losses)
-
-
 def main():
-
+    #OS Side settings and random seeds
     os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
 
     if not seed==None:
@@ -730,23 +806,39 @@ def main():
         np.random.seed(seed)
         tensorflow.set_random_seed(seed)
 
-    if PCA:
+    user_args = parse_arguments()
+
+    #Get data
+    dc, samples = load_genotypes(user_args['infile'], user_args['max_SNPs'])
+    trainsamples, testsamples, traingen, testgen = split_training_data(dc, samples, user_args['train_prop'])
+
+    if search_network_sizes: #Grid search
+        # Should reduce the parameterization of this function, but it's handy for now
+        best_width, best_depth = grid_search(train_gen, test_gen, train_samples, test_samples, user_args)                                           )
+    else:
+        best_width = user_args['width']
+        best_depth = user_args['depth']     
+
+    history, vae = final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
+    save_training_history(history, user_args['out'])
+    predict_latent_coords(dc, user_args['batch_size'], user_args['latent_dim'], 
+                            samples, traingen, best_width, best_depth)
+
+    if user_args['PCA']:
         run_PCA(dc, pcdata, PCA_scaler, n_pc_axes)
         plot_PCA(vaetime, pcatime, out)
 
-    if plot:
+    if user_args['plot']:
         run_plotter(out, metadata)
 
-    if not save_weights:
+    if not user_args['save_weights']:
         subprocess.check_output(['rm',out+"_weights.hdf5"])
 
-    if save_allele_counts and not infile.endswith('.popvae.hdf5'):
-        save_hdf5()
+    if user_arg['save_allele_counts'] and not user_args['infile'].endswith('.popvae.hdf5'):
+        save_hdf5(user_args['infile'], True, dc, samples) 
+        #I have no idea where prune_LD is coming from, so setting it to default True for now
 
 
-
-    if search_network_sizes:
-        grid_search()
 
 if __name__ == "__main__":
     main()
