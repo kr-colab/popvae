@@ -1,15 +1,29 @@
+import argparse
+import os
+import random
+import re
+import subprocess
+import sys
+import time
 import warnings
-import keras, numpy as np, os, allel, pandas as pd, time, random
-import zarr, subprocess, h5py, re, sys, os, argparse
-from matplotlib import pyplot as plt
-from tqdm import tqdm
-from keras.models import Sequential
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+import allel
+import h5py
+import keras
+import tensorflow
+import zarr
+from keras import backend as K
 from keras import layers
 from keras.layers.core import Lambda
-from keras import backend as K
-from keras.models import Model
-import tensorflow
+from keras.models import Model, Sequential
+from matplotlib import pyplot as plt
 from streaming_data import DataGenerator
+from tqdm import tqdm
+
 
 def parse_arguments():
     parser=argparse.ArgumentParser()
@@ -45,7 +59,7 @@ def parse_arguments():
                             Should be a comma-delimited list with no spaces. Default: 32,64,128,256,512')
     parser.add_argument("--depth_range",default="3,6,10,20",type=str,
                         help='range of network depths to test when `--search_network_sizes` is called.\
-                            Should be a comma-delimited list with no spaces. Default: 4,6,8,10')
+                            Should be a comma-delimited list with no spaces. Default: 3,6,10,20')
     parser.add_argument("--depth",default=6,type=int,
                         help='number of hidden layers. default=6.')
     parser.add_argument("--width",default=128,type=int,
@@ -192,8 +206,18 @@ def get_allele_counts(gen):
 
     return ac, ac_all
 
-def drop_non_biallelic_sites(ac, ac_all)
-    print("dropping non-biallelic sites")
+def drop_non_biallelic_sites(ac, ac_all):
+    """Gets derived alleles by removing non-biallelic sites from all counts
+
+    Args:
+        ac (ndarray): individual snps
+        ac_all (ndarray): individual snps per individual
+
+    Returns:
+        ndarray: Biallelic sites that are missing from dataset
+        ndarray: Derived counts with just biallelic sites
+    """
+    print("Dropping non-biallelic sites")
     biallel=ac_all.is_biallelic()
     dc_all=ac_all[biallel,1] #derived alleles per snp
     dc=np.array(ac[biallel,:,1],dtype="int_") #derived alleles per individual
@@ -201,7 +225,19 @@ def drop_non_biallelic_sites(ac, ac_all)
 
     return missingness, dc
 
-def drop_singletons(missingness, dc_all)
+def drop_singletons(missingness, dc_all):
+    """Drops singletons from derived counts on per-individual basis
+
+    Args:
+        missingness (ndarray): Array containing missing values
+        dc_all (ndarray): Derived counts on per snp per individual basis
+
+    Returns:
+        ndarray: derived counts, without singletons
+        ndarray: singletons, that have been filtered out of derived counts and missingness
+        ndarray: missingness, without singletons
+        ndarray: ninds, number of indices for imputing derived counts
+    """
     print("dropping singletons")
     ninds=np.array([np.sum(x) for x in ~missingness])
     singletons=np.array([x<=2 for x in dc_all])
@@ -210,8 +246,20 @@ def drop_singletons(missingness, dc_all)
     ninds=ninds[~singletons]
     missingness=missingness[~singletons,:]
 
-def impute_dc(dc, dc_all, missingness)
-    print("filling missing data with rbinom(2,derived_allele_frequency)")
+    return dc, singletons, missingness, ninds
+
+def impute_dc(dc, dc_all, missingness):
+    """Generate missing derived counts using all counts and binomial distribution
+
+    Args:
+        dc (ndarray): Derived counts
+        dc_all (ndarray): Derived counts per snp per person
+        missingness (ndarray): Missing counts
+
+    Returns:
+        ndarray: derived counts, filled with imputed data
+    """
+    print("Filling missing data with rbinom(2,derived_allele_frequency)")
     af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])])
     for i in tqdm(range(np.shape(dc)[1])):
         indmiss=missingness[:,i]
@@ -222,9 +270,16 @@ def impute_dc(dc, dc_all, missingness)
 
     return dc
 
-def save_hdf5(save_allele_counts, infile, prune_LD, dc, samples):
+def save_hdf5(infile, prune_LD, dc, samples):
+    """Saved h5 file for re-analysis
+
+    Args:
+        infile (str): Filename of input file
+        prune_LD (bool): Whether to prune LD or not
+        dc (ndarray): Derived counts, filtered, imputed 
+        samples (ndarray): Samples
+    """
     #save hdf5 for reanalysis
-    if save_allele_counts and not infile.endswith('.popvae.hdf5'):
         print("saving derived counts for reanalysis")
         if prune_LD:
             outfile=h5py.File(infile+".LDpruned.popvae.hdf5", "w")
@@ -235,65 +290,79 @@ def save_hdf5(save_allele_counts, infile, prune_LD, dc, samples):
         outfile.close()
 
 def subset_to_max_snps(max_SNPs, dc):
+    """Subsets SNPs to maximum desired count
+
+    Args:
+        max_SNPs (int): Max snps to sample down to
+        dc (ndarray): Derived counts
+
+    Returns:
+        ndarray: derived counts, filtered to only be length of max_snps
+    """
     if not max_SNPs==None:
         print("subsetting to "+str(max_SNPs)+" SNPs")
         dc=dc[:,np.random.choice(range(dc.shape[1]),max_SNPs,replace=False)]
     
     return dc
 
-def split_training_data(dc, samples, train_prop)
-    print("running train/test splits")
+def split_training_data(dc, samples, train_prop):
+    """Splits data into training/testing data using sklearn train/test/split 
+        or shuffles if train_prop is 1
+
+    Args:
+        dc (ndarray): Derived counts, filtered/imputed
+        samples (ndarray): Samples
+        train_prop (float): Percent of training proportion from whole sample
+
+    Returns:
+        ndarray: Training, testing sample lists
+        ndarray: Training, testing genotype lists
+    """
+    print("Running train/test splits")
     ninds=dc.shape[0]
     if train_prop==1:
-        train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
-        test=train
+        train_inds = np.arange(ninds)
+        np.random.shuffle(train_inds)
+        test_inds = train_inds
         traingen=dc[train,:]
         testgen=dc[test,:]
         trainsamples=samples[train]
         testsamples=samples[test]
     else:
-        train=np.random.choice(range(ninds),int(train_prop*ninds),replace=False)
-        test=np.array([x for x in range(ninds) if x not in train])
-        traingen=dc[train,:]
-        testgen=dc[test,:]
-        trainsamples=samples[train]
-        testsamples=samples[test]
+        train_inds, test_inds = train_test_split(np.arange(ninds), train_size=train_prop)
+        traingen=dc[train_inds,:]
+        testgen=dc[test_inds,:]
+        trainsamples=samples[train_inds]
+        testsamples=samples[test_inds]
 
     print('Validation Samples:'+ testsamples +'\n')
     print('Running on '+str(dc.shape[1])+" SNPs")
 
     return trainsamples, testsamples, traingen, testgen
 
-def grid_search(depth_range, width_range, patience, search_network_sizes)
-    #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
-    print('running grid search on network sizes')
-    grid_patience = patience / 4
-
-    #get parameter combinations (will need to rework this for >2 params)
-    paramsets=[[x,y] for x in width_range for y in depth_range]
-
-    #output dataframe
-    param_losses=pd.DataFrame()
-    param_losses['width']=None
-    param_losses['depth']=None
-    param_losses['val_loss']=None
-
-    #params=paramsets[0]
-    for params in tqdm(paramsets):
-        width=params[0]
-        depth=params[1]
-        print('width='+str(width)+'\ndepth='+str(depth))
-
-    return width, depth, param_losses, grid_patience
-
 def sampling(args):
+    """A Lambda function
+       Too much statistics for me
+       Enjoy this haiku
+    """
     z_mean, z_log_var = args
     epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
                               mean=0., stddev=1.)
     return z_mean + K.exp(z_log_var) * epsilon
 
-def create_vae(traingen, width, latent_dim, sampling)
-    #encoder
+def create_encoder(traingen, width, depth, latent_dim, sampling):
+    """Builds encoder network for first half of VAE
+
+    Args:
+        traingen (ndarray): training dataset
+        width (int): Width of network
+        depth (int): Depth of network
+        latent_dim (int): Latent dimensions to use
+        sampling (func): Lambda func
+
+    Returns:
+        keras model: built encoder model
+    """
     input_seq = keras.Input(shape=(traingen.shape[1],))
     x=layers.Dense(width,activation="elu")(input_seq)
     for i in range(depth-1):
@@ -303,7 +372,28 @@ def create_vae(traingen, width, latent_dim, sampling)
     z = layers.Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
     encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
 
-    #decoder
+    return encoder
+
+def create_vae(traingen, width, depth, latent_dim, sampling, encoder):
+    """Builds the whole VAE end to end network
+
+    Args:
+        traingen (ndarray): Training genotypes
+        width (int): Width of net (number of nodes per layer)
+        depth (int): Depth of net (number of layers)
+        latent_dim (int): Dimensionality of latent space
+        sampling (func): Function call for lambda function sampling()
+        encoder (keras model): Built encoder model to use for first half of VAE
+
+    Returns:
+        keras model: VAE model
+        keras layer: Keras Input layer of shape (traingen.shape[1],)
+        keras layer: Keras output layer of shape (traingen.shape[1],) after decoder generates data
+
+    The reason encoder is functionalized is because it needs to be called for a few things, 
+    but decoder is only used for end-to-end vae prediction, so I'm leaving it here.
+    """
+    #Decoder
     decoder_input=layers.Input(shape=(latent_dim,),name='z_sampling')
     x=layers.Dense(width,activation="linear")(decoder_input)#was elu
     for i in range(depth-1):
@@ -317,7 +407,17 @@ def create_vae(traingen, width, latent_dim, sampling)
 
     return vae, input_seq, output_seq
 
-def calculate_loss(input_seq, output_seq, vae)
+def add_loss_function(vae, input_seq, output_seq):
+    """Adds combined loss from KL and Reconstruction loss to VAE model
+
+    Args:
+        vae (keras model): Built VAE end-to-end model
+        input_seq (keras layer): Input array to the network (ndarray?)
+        output_seq (keras layer): Output array from generative net
+
+    Returns:
+        keras model: VAE model with custom loss function added
+    """
     #get loss as xent_loss+kl_loss
     reconstruction_loss = keras.losses.binary_crossentropy(input_seq,output_seq)
     reconstruction_loss *= traingen.shape[1]
@@ -330,7 +430,19 @@ def calculate_loss(input_seq, output_seq, vae)
 
     return vae
 
-def train_model(vae, out, grid_patience, print_predictions)
+def train_model(vae, out, grid_patience, print_predictions):
+    """Trains model
+
+
+    Args:
+        vae (keras model): Built keras model with custom loss function
+        out (str): Output filename
+        grid_patience (int): Patience to use for early stopping of val_loss
+        print_predictions (func): Lambda function for callback
+
+    Returns:
+        keras history: History object from best model
+    """
     vae.compile(optimizer='adam')
 
     checkpointer=keras.callbacks.ModelCheckpoint(
@@ -368,7 +480,20 @@ def train_model(vae, out, grid_patience, print_predictions)
 
     return history
 
-def create_print_pred_callback(encoder, dc, samples, batch_size, epoch, prediction_freq):
+def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq):
+    """Creates lambda callback function using custom parameterization
+
+    Args:
+        encoder (keras network): Built keras network for encoder portion of VAE
+        dc (ndarray): Derived counts
+        samples (ndarray): Samples
+        batch_size (int): Batch size for training
+        ep
+        prediction_freq (int): How often to print predictions
+
+    Returns:
+        func: Keras callback lambda function
+    """
     print_predictions=keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch,
             logs:saveLDpos(encoder=encoder,
@@ -380,9 +505,19 @@ def create_print_pred_callback(encoder, dc, samples, batch_size, epoch, predicti
 
     return print_predictions
 
-def calc_losses(history, width, depth):
+def calc_min_losses(history, width, depth):
+    """Gets minimum loss from history and returns to param_losses dataframe
+
+    Args:
+        history (Keras History): Keras history object for the model just trained
+        width (int): Width of model (nodes per layer)
+        depth (int): Depth of model (layers)
+
+    Returns:
+        pd.df: Losses from each parameterization
+    """
     minloss=np.min(history.history['val_loss'])
-    row=np.transpose(pd.DataFrame([tmpwidth,tmpdepth,minloss]))
+    row=np.transpose(pd.DataFrame([width,depth,minloss]))
     row.columns=['width','depth','val_loss']
     param_losses=param_losses.append(row,ignore_index=True)
     K.clear_session() #maybe solves the gpu memory issue(???)
@@ -390,6 +525,15 @@ def calc_losses(history, width, depth):
     return param_losses
 
 def get_best_losses(param_losses):
+    """Gets best parameters from loss values and prints
+
+    Args:
+        param_losses (dict): Dictionary of losses calculated during training
+
+    Returns:
+        int: Width of best network
+        int: Depth of best network
+    """
     #save tests and get min val_loss parameter set
     print(param_losses)
     param_losses.to_csv(out+"_param_grid.csv",index=False,header=True)
@@ -400,13 +544,17 @@ def get_best_losses(param_losses):
 
     return width, depth
 
-def sampling(args):
-    z_mean, z_log_var = args
-    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
-                              mean=0., stddev=1.,seed=seed)
-    return z_mean + K.exp(z_log_var) * epsilon
+def saveLDpos(encoder, predgen, samples, batch_size, epoch, frequency):
+    """Runs predictions from encoder and saves latent space to csv
 
-def saveLDpos(encoder,predgen,samples,batch_size,epoch,frequency):
+    Args:
+        encoder (keras model): Trained encoder model
+        predgen (ndarray): Genotypes to predict latent space from
+        samples (ndarray): Samples
+        batch_size (int): Batch size
+        epoch (int): Number of epochs to run predictions for
+        frequency (int): How often to save predictions
+    """
     if(epoch%frequency==0):
         pred=encoder.predict(predgen,batch_size=batch_size)[0]
         pred=pd.DataFrame(pred)
@@ -418,11 +566,27 @@ def saveLDpos(encoder,predgen,samples,batch_size,epoch,frequency):
             pred.to_csv(out+"_training_preds.txt",sep='\t',index=False,mode='a',header=False)
 
 def save_training_history(history, out):
+    """Saves history to text file
+
+    Args:
+        history (keras history): Trained model history
+        out (str): Filename for output file prefix
+    """
     #save training history
     h=pd.DataFrame(history.history)
     h.to_csv(out+"_history.txt",sep="\t")
 
 def predict_latent_coords(vae, encoder, dc, batch_size, latent_dim, samples):
+    """Get latent space mean and var from trained encoder, write coordinates to csv
+
+    Args:
+        vae (keras model): end-to-end trained VAE model
+        encoder (keras model): Encoder part of VAE model
+        dc (ndarray): Derived count
+        batch_size (int): Batch size for predictions
+        latent_dim (int): Latent dimensions to predict for
+        samples (ndarray): Samples
+    """
     #predict latent space coords for all samples from weights minimizing val loss
     vae.load_weights(out+"_weights.hdf5")
     pred=encoder.predict(dc,batch_size=batch_size) #returns [mean,sd,sample] for individual distributions in latent space
@@ -439,8 +603,17 @@ def predict_latent_coords(vae, encoder, dc, batch_size, latent_dim, samples):
     pred['sampleID']=samples
     pred.to_csv(out+'_latent_coords.txt',sep='\t',index=False)
 
-def run_PCA(dc, pcdata, PCA_scaler, n_pc_axes
-    if PCA:
+def run_PCA(dc, PCA_scaler, n_pc_axes):
+    """Runs PCA on derived count data to compare against VAE performance, saves to csv
+
+    Args:
+        dc (ndarray): Derived counts
+        PCA_scaler (str): Scaler to use for PCA
+        n_pc_axes (int): Number of components to return from PCA
+
+    Returns:
+        float: PCAtime, time took to complete PCA process
+    """
     pcdata=np.transpose(dc)
     t1=time.time()
     print("running PCA")
@@ -454,7 +627,14 @@ def run_PCA(dc, pcdata, PCA_scaler, n_pc_axes
     pcatime=t2-t1
     print("PCA run time: "+str(pcatime)+" seconds")
 
+    return pcatime
+
 def plot_history(history):
+    """Plots training history of best model, saves to file
+
+    Args:
+        history (keras history): Keras History object, gotten from best VAE model trianing
+    """
     #training history
     #plt.switch_backend('agg')
     fig = plt.figure(figsize=(3,1.5),dpi=200)
@@ -467,13 +647,78 @@ def plot_history(history):
     ax1.legend()
     fig.savefig(out+"_history.pdf",bbox_inches='tight')
 
-def plot_PCA(vaetime, pcatime, out):
+def write_times(vaetime, pcatime, out):
+    """Writes runtimes to text
+
+    Args:
+        vaetime (float): Time for vae to run
+        pcatime (float): Time for pca to run
+        out (str): Prefix for outfile
+    """
     if PCA:
         timeout=np.array([vaetime,pcatime])
         np.savetxt(X=timeout,fname=out+"_runtimes.txt")
 
 def run_plotter(out, metadata):
+    """Subprocess call to run plotter on latent space coordinates
+
+    Args:
+        out (str): Filename to prefix onto written plot files
+        metadata (str): Metadata supplied by user
+    """
     subprocess.run("python scripts/plotvae.py --latent_coords "+out+'_latent_coords.txt'+' --metadata '+metadata,shell=True)
+
+def grid_search(depth_range, width_range, patience, train_gen, test_gen, train_samples, test_samples, latent_dim, sampling, out, print_prediction_callback):
+    """Grid search through network parameterizations
+    - Iterates through next set of parameters
+    - Creates network
+    - Trains network 
+    - 
+
+    Args:
+        depth_range ([type]): [description]
+        width_range ([type]): [description]
+        patience ([type]): [description]
+        train_gen ([type]): [description]
+        test_gen ([type]): [description]
+        train_samples ([type]): [description]
+        test_samples ([type]): [description]
+        latent_dim ([type]): [description]
+        sampling ([type]): [description]
+        out ([type]): [description]
+        print_prediction_callback ([type]): [description]
+    """
+
+    #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
+    #Wonder if switching to something pre-written would help? Talos, for example?
+    print('Running grid search on network sizes')
+    grid_patience = patience / 4
+
+    #get parameter combinations (will need to rework this for >2 params)
+    paramsets=[[x,y] for x in width_range for y in depth_range]
+
+    #output dataframe
+    param_losses=pd.DataFrame()
+    param_losses['width']=None
+    param_losses['depth']=None
+    param_losses['val_loss']=None
+
+
+    #params=paramsets[0]
+    for params in tqdm(paramsets):
+        width=params[0]
+        depth=params[1]
+        print('width='+str(width)+'\ndepth='+str(depth))
+
+        encoder = create_encoder(train_gen, width, depth, latent_dim, sampling)
+        print_prediction_callback = create_print_pred_callback(encoder)
+
+        vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, latent_dim, sampling)
+        vae = add_loss_function(vae, input_seq, output_seq)
+        history = train_model(vae, out, grid_patience, print_prediction_callback)
+
+    get_best_losses(param_losses)
+
 
 def main():
 
@@ -486,6 +731,7 @@ def main():
         tensorflow.set_random_seed(seed)
 
     if PCA:
+        run_PCA(dc, pcdata, PCA_scaler, n_pc_axes)
         plot_PCA(vaetime, pcatime, out)
 
     if plot:
@@ -494,7 +740,8 @@ def main():
     if not save_weights:
         subprocess.check_output(['rm',out+"_weights.hdf5"])
 
-
+    if save_allele_counts and not infile.endswith('.popvae.hdf5'):
+        save_hdf5()
 
 
 
