@@ -130,7 +130,16 @@ def parse_arguments():
     return user_args
 
 def load_genotypes(infile, max_SNPs):
-    
+    """Loads genotypes and performs filtering/subsetting using any of the available filetypes
+ 
+    Args:
+        infile (str): Filename for input data
+        max_SNPs (int): Maximum number of snps to subset to
+
+    Returns:
+        ndarray: dc, Derived counts
+        ndarray: samples, sample array
+    """
     print("\nLoading Genotypes")
     if infile.endswith('.zarr'):
         gen, samples = load_zarr(infile)
