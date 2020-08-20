@@ -92,42 +92,17 @@ def parse_arguments():
     parser.add_argument("--metadata",default=None,
                         help="path to tab-delimited metadata file with column 'sampleID'.")
     args=parser.parse_args()
-
-    user_args = {
-        'infile': args.infile
-        'save_allele_counts': args.save_allele_counts,
-        'patience': args.patience,
-        'batch_size': args.batch_size,
-        'max_epochs': args.max_epochs,
-        'seed': args.seed,
-        'save_weights': args.save_weights,
-        'train_prop': args.train_prop,
-        'gpu_number': args.gpu_number,
-        'out': args.out,
-        'prediction_freq': args.prediction_freq,
-        'max_SNPs': args.max_SNPs,
-        'latent_dim': args.latent_dim,
-        'PCA': args.PCA,
-        'PCA_scaler': args.PCA_scaler,
-        'depth': args.depth,
-        'width': args.width,
-        'n_pc_axes': args.n_pc_axes,
-        'search_network_sizes': args.search_network_sizes,
-        'plot': args.plot,
-        'metadata': args.metadata
-        'depth_range': args.depth_range
-        'width_range': args.width_range
     }
 
-    user_args['depth_range']=np.array([int(x) for x in re.split(",", user_args['depth_range'])])
-    user_args['width_range']=np.array([int(x) for x in re.split(",", user_args['width_range'])])
+    args.depth_range=np.array([int(x) for x in re.split(",", args.depth_range)])
+    args.width_range=np.array([int(x) for x in re.split(",", args.width_range)])
 
     if args.plot:
         if args.metadata==None:
             print("ERROR: `--plot` argument requires `--metadata`")
             exit()
 
-    return user_args
+    return args
 
 def load_genotypes(infile, max_SNPs):
     """Loads genotypes and performs filtering/subsetting using any of the available filetypes
@@ -418,7 +393,7 @@ def create_encoder(traingen, width, depth, latent_dim):
 
     return encoder
 
-def create_vae(traingen, width, depth, latent_dim, sampling, encoder):
+def create_vae(traingen, width, depth, latent_dim, encoder):
     """Builds the whole VAE end to end network
 
     Args:
@@ -426,7 +401,6 @@ def create_vae(traingen, width, depth, latent_dim, sampling, encoder):
         width (int): Width of net (number of nodes per layer)
         depth (int): Depth of net (number of layers)
         latent_dim (int): Dimensionality of latent space
-        sampling (func): Function call for  function sampling()
         encoder (keras model): Built encoder model to use for first half of VAE
 
     Returns:
@@ -524,7 +498,7 @@ def train_model(vae, out, grid_patience, print_predictions):
 
     return history, vae
 
-def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq, saveLDpos):
+def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq):
     """Creates callback function using custom parameterization
 
     Args:
@@ -533,7 +507,6 @@ def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq
         samples (ndarray): Samples
         batch_size (int): Batch size for training
         prediction_freq (int): How often to print predictions
-        saveLDpos (func): Lambda function for logging
 
     Returns:
         func: Keras callback function
@@ -602,7 +575,6 @@ def final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
         train_samples (ndarray): Training samples
         test_samples (ndarray): Testing samples
         latent_dim (int): Number of latent dimensions
-        sampling (func): Lambda function for sampling
         out (str): Output file prefix
         print_prediction_callback (func): Lambda function for keras callback
 
@@ -610,14 +582,14 @@ def final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
         keras history: History object from best model
         keras model: fitted VAE model
     """
-    encoder = create_encoder(train_gen, user_args['width'], user_args['depth'], user_args['latent_dim'])
+    encoder = create_encoder(train_gen, user_args.width, user_args.depth, user_args.latent_dim)
     print_prediction_callback = create_print_pred_callback(encoder, dc, samples,
-                                                            user_args['batch_size'], user_args['prediction_freq'],
+                                                            user_args.batch_size, user_args.prediction_freq,
                                                             saveLDpos(encoder, predgen,
-                                                                samples, user_args['batch_size'], 
-                                                                epoch, user_args['pred_frequency']))
+                                                                samples, user_args.batch_size, 
+                                                                epoch, user_args.pred_frequency))
 
-    vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args['latent_dim'], sampling())
+    vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args.latent_dim)
     vae = add_loss_function(vae, input_seq, output_seq)
 
     history, vae = train_model(vae, out, grid_patience, print_prediction_callback)
@@ -661,11 +633,11 @@ def grid_search(train_gen, test_gen, train_samples, test_samples, user_args):
     #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
     #Wonder if switching to something pre-written would help? Talos, for example?
     print('Running grid search on network sizes')
-    grid_patience = user_args['patience'] / 4
+    grid_patience = user_args.patience / 4
 
     #get parameter combinations (will need to rework this for >2 params)
     # OOB gridsearch will make that ^ very easy -Logan
-    paramsets=[[x,y] for x in user_args['width_range'] for y in user_args['depth_range']]
+    paramsets=[[x,y] for x in user_args.width_range for y in user_args.depth_range]
 
     #output dataframe
     param_losses=pd.DataFrame()
@@ -679,14 +651,14 @@ def grid_search(train_gen, test_gen, train_samples, test_samples, user_args):
         depth=params[1]
         print('width='+str(width)+'\ndepth='+str(depth))
 
-        encoder = create_encoder(train_gen, user_args['width'], user_args['depth'], user_args['latent_dim'])
+        encoder = create_encoder(train_gen, user_args.width, user_args.depth, user_args.latent_dim)
         print_prediction_callback = create_print_pred_callback(encoder, dc, samples,
-                                                                user_args['batch_size'], user_args['prediction_freq'],
+                                                                user_args.batch_size, user_args.prediction_freq,
                                                                 saveLDpos(encoder, predgen,
-                                                                    samples, user_args['batch_size'], 
-                                                                    epoch, user_args['pred_frequency']))
+                                                                    samples, user_args.batch_size, 
+                                                                    epoch, user_args.pred_frequency))
 
-        vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args['latent_dim'], sampling())
+        vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args.latent_dim)
         vae = add_loss_function(vae, input_seq, output_seq)
 
         history, vae = train_model(vae, out, grid_patience, print_prediction_callback)
@@ -718,11 +690,10 @@ def predict_latent_coords(dc, batch_size, latent_dim, samples, traingen, width, 
         traingen (ndarray): Training genotypes
         width (int): Width of net
         depth (int): Depth of net
-        sampling (func): Lambda func
     """
 
     encoder = create_encoder(traingen, width, depth, latent_dim)
-    vae = create_vae(traingen, width, depth, latent_dim, sampling(), encoder)
+    vae = create_vae(traingen, width, depth, latent_dim, encoder)
 
     #predict latent space coords for all samples from weights minimizing val loss
     vae.load_weights(out+"_weights.hdf5")
@@ -818,33 +789,33 @@ def main():
     user_args = parse_arguments()
 
     #Get data
-    dc, samples = load_genotypes(user_args['infile'], user_args['max_SNPs'])
-    trainsamples, testsamples, traingen, testgen = split_training_data(dc, samples, user_args['train_prop'])
+    dc, samples = load_genotypes(user_args.infile, user_args.max_SNPs)
+    trainsamples, testsamples, traingen, testgen = split_training_data(dc, samples, user_args.train_prop)
 
     if search_network_sizes: #Grid search
         # Should reduce the parameterization of this function, but it's handy for now
         best_width, best_depth = grid_search(train_gen, test_gen, train_samples, test_samples, user_args)                                           )
     else:
-        best_width = user_args['width']
-        best_depth = user_args['depth']     
+        best_width = user_args.width
+        best_depth = user_args.depth'    
 
     history, vae = final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
-    save_training_history(history, user_args['out'])
-    predict_latent_coords(dc, user_args['batch_size'], user_args['latent_dim'], 
+    save_training_history(history, user_args.out)
+    predict_latent_coords(dc, user_args.batch_size, user_args.latent_dim, 
                             samples, traingen, best_width, best_depth)
 
-    if user_args['PCA']:
+    if user_args.PCA:
         run_PCA(dc, pcdata, PCA_scaler, n_pc_axes)
         plot_PCA(vaetime, pcatime, out)
 
-    if user_args['plot']:
+    if user_args.plot:
         run_plotter(out, metadata)
 
-    if not user_args['save_weights']:
+    if not user_args.save_weights:
         subprocess.check_output(['rm',out+"_weights.hdf5"])
 
-    if user_arg['save_allele_counts'] and not user_args['infile'].endswith('.popvae.hdf5'):
-        save_hdf5(user_args['infile'], True, dc, samples) 
+    if user_args.save_allele_counts and not user_args.infile.endswith('.popvae.hdf5'):
+        save_hdf5(user_args.infile, True, dc, samples) 
         #I have no idea where prune_LD is coming from, so setting it to default True for now
 
 
