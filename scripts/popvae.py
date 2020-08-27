@@ -28,13 +28,13 @@ from tqdm import tqdm
 def parse_arguments():
     #TODO maybe think about making this a tsv input? That's a lot of parameters
     parser=argparse.ArgumentParser()
-    parser.add_argument("--infile",
+    parser.add_argument("--infile", 
                         help="path to input genotypes in vcf (.vcf | .vcf.gz), \
                             zarr, or .popvae.hdf5 format. Zarr files should be as produced \
                             by scikit-allel's `vcf_to_zarr( )` function. `.popvae.hdf5`\
                             files store filtered genotypes from previous runs (i.e. \
                             from --save_allele_counts).")
-    parser.add_argument("--out",default="vae",
+    parser.add_argument("--out",default="vae", 
                         help="path for saving output")
     parser.add_argument("--patience",default=50,type=int,
                         help="training patience. default=50")
@@ -52,9 +52,9 @@ def parse_arguments():
     parser.add_argument("--train_prop",default=0.9,type=float,
                         help="proportion of samples to use for training \
                             (vs validation). default: 0.9")
-    parser.add_argument("--search_network_sizes",default=False,action="store_true",
+    parser.add_argument("--search_network_sizes",default=True,action="store_true",
                         help='run grid search over network sizes and use the network with \
-                            minimum validation loss. default: False. ')
+                            minimum validation loss. default: True. ')
     parser.add_argument("--width_range",default="32,64,128,256,512",type=str,
                         help='range of hidden layer widths to test when `--search_network_sizes` is called.\
                             Should be a comma-delimited list with no spaces. Default: 32,64,128,256,512')
@@ -92,7 +92,7 @@ def parse_arguments():
     parser.add_argument("--metadata",default=None,
                         help="path to tab-delimited metadata file with column 'sampleID'.")
     args=parser.parse_args()
-    }
+    
 
     args.depth_range=np.array([int(x) for x in re.split(",", args.depth_range)])
     args.width_range=np.array([int(x) for x in re.split(",", args.width_range)])
@@ -118,19 +118,19 @@ def load_genotypes(infile, max_SNPs):
     print("\nLoading Genotypes")
     if infile.endswith('.zarr'):
         gen, samples = load_zarr(infile)
-        ac, ac_all = get_allele_counts(gen)
-        missingness, dc, dc_all = drop_non_biallelic_sites(ac, ac_all)
-        dc, missingness = drop_singletons(missingness, dc_all)
+        ac, ac_all = get_allele_counts(gen, infile)
+        missingness, dc, dc_all = drop_non_biallelic_sites(ac, ac_all, gen)
+        dc, dc_all, missingness, ninds = drop_singletons(missingness, dc_all, dc)
         dc = subset_to_max_snps(max_SNPs, dc)
-        dc = impute_dc(dc, dc_all, missingness)
+        dc = impute_dc(dc, dc_all, missingness, ninds)
 
     elif infile.endswith('.vcf') or infile.endswith('.vcf.gz'):
         gen, samples = load_vcf(infile)
-        ac, ac_all = get_allele_counts(gen)
-        missingness, dc, dc_all = drop_non_biallelic_sites(ac, ac_all)
-        dc, missingness = drop_singletons(missingness, dc_all)
+        ac, ac_all = get_allele_counts(gen, infile)
+        missingness, dc, dc_all = drop_non_biallelic_sites(ac, ac_all, gen)
+        dc, dc_all, missingness, ninds = drop_singletons(missingness, dc_all, dc)
         dc = subset_to_max_snps(max_SNPs, dc)
-        dc = impute_dc(dc, dc_all, missingness)
+        dc = impute_dc(dc, dc_all, missingness, ninds)
 
     elif infile.endswith('.popvae.hdf5'):
         dc, samples = load_hdf5(infile)
@@ -187,12 +187,12 @@ def load_hdf5(infile):
 
     return dc, samples
 
-def get_allele_counts(gen):
+def get_allele_counts(gen, infile):
     """Gets allele counts per-snp and per-snp-per-individual from genotypes
 
     Args:
         gen (genotype array): allel genotype array object
-
+        infile (str): input file
     Returns:
         ndarray: ac, allele count array per snp
         ndarray: ac_all, allele count array per snp per individual
@@ -205,13 +205,13 @@ def get_allele_counts(gen):
 
     return ac, ac_all
 
-def drop_non_biallelic_sites(ac, ac_all):
+def drop_non_biallelic_sites(ac, ac_all, gen):
     """Gets derived alleles by removing non-biallelic sites from all counts
 
     Args:
         ac (ndarray): individual snps
         ac_all (ndarray): individual snps per individual
-
+        gen (genotype array): allel genotype array
     Returns:
         ndarray: Biallelic sites that are missing from dataset
         ndarray: Derived counts with just biallelic sites
@@ -225,18 +225,21 @@ def drop_non_biallelic_sites(ac, ac_all):
 
     return missingness, dc, dc_all
 
-def drop_singletons(missingness, dc_all):
+def drop_singletons(missingness, dc_all, dc):
     """Drops singletons from derived counts on per-individual basis
 
     Args:
         missingness (ndarray): Array containing missing values
         dc_all (ndarray): Derived counts on per snp per individual basis
+        dc (ndarray): Derived counts
 
     Returns:
         ndarray: derived counts, without singletons
+        ndarray: derived counts all, without singletons
         ndarray: missingness, without singletons
+        ninds: indices of everything not singleton
     """
-    print("dropping singletons")
+    print("Dropping singletons")
     ninds=np.array([np.sum(x) for x in ~missingness])
     singletons=np.array([x<=2 for x in dc_all])
     dc_all=dc_all[~singletons]
@@ -244,16 +247,16 @@ def drop_singletons(missingness, dc_all):
     ninds=ninds[~singletons]
     missingness=missingness[~singletons,:]
 
-    return dc, missingness
+    return dc, dc_all, missingness, ninds
 
-def impute_dc(dc, dc_all, missingness):
+def impute_dc(dc, dc_all, missingness, ninds):
     """Generate missing derived counts using all counts and binomial distribution
 
     Args:
         dc (ndarray): Derived counts
         dc_all (ndarray): Derived counts per snp per person
         missingness (ndarray): Missing counts
-
+        ninds (ndarray): Indices of non-singleton locations
     Returns:
         ndarray: derived counts, filled with imputed data
     """
@@ -278,14 +281,14 @@ def save_hdf5(infile, prune_LD, dc, samples):
         samples (ndarray): Samples
     """
     #save hdf5 for reanalysis
-        print("saving derived counts for reanalysis")
-        if prune_LD:
-            outfile=h5py.File(infile+".LDpruned.popvae.hdf5", "w")
-        else:
-            outfile=h5py.File(infile+".popvae.hdf5", "w")
-        outfile.create_dataset("derived_counts", data=dc)
-        outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
-        outfile.close()
+    print("saving derived counts for reanalysis")
+    if prune_LD:
+        outfile=h5py.File(infile+".LDpruned.popvae.hdf5", "w")
+    else:
+        outfile=h5py.File(infile+".popvae.hdf5", "w")
+    outfile.create_dataset("derived_counts", data=dc)
+    outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
+    outfile.close()
 
 def subset_to_max_snps(max_SNPs, dc):
     """Subsets SNPs to maximum desired count
@@ -338,7 +341,7 @@ def split_training_data(dc, samples, train_prop):
 
     return trainsamples, testsamples, traingen, testgen
 
-def sampling(args):
+def sampling(args, latent_dim):
     """A Lambda function \n
        Too much statistics for me \n 
        Enjoy this haiku\n
@@ -388,7 +391,7 @@ def create_encoder(traingen, width, depth, latent_dim):
         x=layers.Dense(width,activation="elu")(x)
     z_mean=layers.Dense(latent_dim)(x)
     z_log_var=layers.Dense(latent_dim)(x)
-    z = layers.Lambda(sampling(), output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
+    z = layers.Lambda(sampling, output_shape=(latent_dim,), name='z', arguments={'latent_dim':latent_dim})([z_mean, z_log_var])
     encoder=Model(input_seq,[z_mean,z_log_var,z],name='encoder')
 
     return encoder
@@ -420,12 +423,13 @@ def create_vae(traingen, width, depth, latent_dim, encoder):
     decoder=Model(decoder_input,output,name='decoder')
 
     #end-to-end vae
+    input_seq = keras.Input(shape=(traingen.shape[1],))
     output_seq = decoder(encoder(input_seq)[2])
     vae = Model(input_seq, output_seq, name='vae')
 
     return vae, input_seq, output_seq
 
-def add_loss_function(vae, input_seq, output_seq):
+def add_loss_function(vae, input_seq, output_seq, traingen):
     """Adds combined loss from KL and Reconstruction loss to VAE model
 
     Args:
@@ -448,13 +452,15 @@ def add_loss_function(vae, input_seq, output_seq):
 
     return vae
 
-def train_model(vae, out, grid_patience, print_predictions):
+def train_model(vae, out, grid_patience, traingen, testgen, print_predictions):
     """Trains given VAE model
 
     Args:
         vae (keras model): Built keras model with custom loss function
         out (str): Output filename
         grid_patience (int): Patience to use for early stopping of val_loss
+        traingen (ndarray): Training genotypes
+        testgen (ndarray): Testing genotypes
         print_predictions (func): Function for callback
 
     Returns:
@@ -498,7 +504,7 @@ def train_model(vae, out, grid_patience, print_predictions):
 
     return history, vae
 
-def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq):
+def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq, epoch):
     """Creates callback function using custom parameterization
 
     Args:
@@ -512,8 +518,8 @@ def create_print_pred_callback(encoder, dc, samples, batch_size, prediction_freq
         func: Keras callback function
     """
     print_predictions=keras.callbacks.LambdaCallback(
-            on_epoch_end= epoch,
-            logs:saveLDpos(encoder=encoder,
+            on_epoch_end= lambda epoch, 
+            logs: saveLDpos(encoder=encoder,
                             predgen=dc,
                             samples=samples,
                             batch_size=batch_size,
@@ -562,21 +568,17 @@ def get_best_losses(param_losses):
 
     return width, depth
 
-def final_model_run(train_gen, test_gen, train_samples, test_samples, user_args):
+def final_model_run(dc, samples, train_gen, test_gen, train_samples, test_samples, user_args, epoch):
     """What if you're too good for grid search? Then you run this.
     Same workflow as grid search, just leave out all the reparameterizations
 
     Args:
-        depth_range (str): Ranges of depths to test
-        width_range (str): Range of widths to test
-        patience (int): Patience parameter for early stopping
+        dc (ndarray): Derived counts
         train_gen (ndarray): Training genotypes
         test_gen (ndarray): Testing genotypes
         train_samples (ndarray): Training samples
         test_samples (ndarray): Testing samples
-        latent_dim (int): Number of latent dimensions
-        out (str): Output file prefix
-        print_prediction_callback (func): Lambda function for keras callback
+        user_args (dict): Dictionary with user arguments to script
 
     Returns:
         keras history: History object from best model
@@ -585,14 +587,14 @@ def final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
     encoder = create_encoder(train_gen, user_args.width, user_args.depth, user_args.latent_dim)
     print_prediction_callback = create_print_pred_callback(encoder, dc, samples,
                                                             user_args.batch_size, user_args.prediction_freq,
-                                                            saveLDpos(encoder, predgen,
+                                                            saveLDpos(encoder, dc,
                                                                 samples, user_args.batch_size, 
-                                                                epoch, user_args.pred_frequency))
+                                                                user_args.prediction_freq, epoch))
+                                                                
+    vae, input_seq, output_seq = create_vae(train_gen, width, depth, user_args.latent_dim)
+    vae = add_loss_function(vae, input_seq, output_seq, traingen)
 
-    vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args.latent_dim)
-    vae = add_loss_function(vae, input_seq, output_seq)
-
-    history, vae = train_model(vae, out, grid_patience, print_prediction_callback)
+    history, vae = train_model(vae, out, grid_patience, train_gen, test_gen, print_prediction_callback)
     param_losses = append_min_losses(history, width, depth, param_losses)
     
     t1=time.time()
@@ -603,7 +605,7 @@ def final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
 
     return history, vae
 
-def grid_search(train_gen, test_gen, train_samples, test_samples, user_args):
+def grid_search(dc, samples, train_gen, test_gen, train_samples, test_samples, user_args, epoch):
     """Grid search through network parameterizations
     - Iterates through next set of parameters
     - Creates net
@@ -654,12 +656,12 @@ def grid_search(train_gen, test_gen, train_samples, test_samples, user_args):
         encoder = create_encoder(train_gen, user_args.width, user_args.depth, user_args.latent_dim)
         print_prediction_callback = create_print_pred_callback(encoder, dc, samples,
                                                                 user_args.batch_size, user_args.prediction_freq,
-                                                                saveLDpos(encoder, predgen,
+                                                                saveLDpos(encoder, dc,
                                                                     samples, user_args.batch_size, 
-                                                                    epoch, user_args.pred_frequency))
+                                                                    user_args.prediction_freq, epoch))
 
-        vae, input_seq, output_seq, encoder = create_vae(train_gen, width, depth, user_args.latent_dim)
-        vae = add_loss_function(vae, input_seq, output_seq)
+        vae, input_seq, output_seq = create_vae(train_gen, width, depth, user_args.latent_dim, encoder)
+        vae = add_loss_function(vae, input_seq, output_seq, train_gen)
 
         history, vae = train_model(vae, out, grid_patience, print_prediction_callback)
         param_losses = append_min_losses(history, width, depth, param_losses)
@@ -693,7 +695,7 @@ def predict_latent_coords(dc, batch_size, latent_dim, samples, traingen, width, 
     """
 
     encoder = create_encoder(traingen, width, depth, latent_dim)
-    vae = create_vae(traingen, width, depth, latent_dim, encoder)
+    vae, input_seq, output_seq = create_vae(traingen, width, depth, latent_dim, encoder)
 
     #predict latent space coords for all samples from weights minimizing val loss
     vae.load_weights(out+"_weights.hdf5")
@@ -777,29 +779,31 @@ def run_plotter(out, metadata):
     subprocess.run("python scripts/plotvae.py --latent_coords "+out+'_latent_coords.txt'+' --metadata '+metadata,shell=True)
 
 def main():
-    #OS Side settings and random seeds
-    os.environ["CUDA_VISIBLE_DEVICES"]=gpu_number
 
-    if not seed==None:
-        os.environ['PYTHONHASHSEED']=str(seed)
-        random.seed(seed)
-        np.random.seed(seed)
-        tensorflow.set_random_seed(seed)
 
     user_args = parse_arguments()
 
+    #OS Side settings and random seeds
+    os.environ["CUDA_VISIBLE_DEVICES"]=user_args.gpu_number
+
+    if not user_args.seed==None:
+        os.environ['PYTHONHASHSEED']=str(user_args.seed)
+        random.seed(user_args.seed)
+        np.random.seed(user_args.seed)
+        tensorflow.set_random_seed(user_args.seed)
+
     #Get data
     dc, samples = load_genotypes(user_args.infile, user_args.max_SNPs)
-    trainsamples, testsamples, traingen, testgen = split_training_data(dc, samples, user_args.train_prop)
+    train_samples, test_samples, train_gen, test_gen = split_training_data(dc, samples, user_args.train_prop)
 
-    if search_network_sizes: #Grid search
+    if user_args.search_network_sizes: #Grid search
         # Should reduce the parameterization of this function, but it's handy for now
-        best_width, best_depth = grid_search(train_gen, test_gen, train_samples, test_samples, user_args)                                           )
+        best_width, best_depth = grid_search(dc, samples, train_gen, test_gen, train_samples, test_samples, user_args, user_args.max_epochs/4)
     else:
         best_width = user_args.width
-        best_depth = user_args.depth'    
+        best_depth = user_args.depth   
 
-    history, vae = final_model_run(train_gen, test_gen, train_samples, test_samples, user_args)
+    history, vae = final_model_run(dc, samples, train_gen, test_gen, train_samples, test_samples, user_args, user_args.max_epochs/4)
     save_training_history(history, user_args.out)
     predict_latent_coords(dc, user_args.batch_size, user_args.latent_dim, 
                             samples, traingen, best_width, best_depth)
