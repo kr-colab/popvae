@@ -15,6 +15,7 @@ import allel
 import h5py
 import keras
 import tensorflow
+
 import zarr
 from keras import backend as K
 from keras import layers
@@ -49,7 +50,7 @@ def parse_arguments():
                         help="save model weights to out+weights.hdf5.")
     parser.add_argument("--seed",default=None,type=int,help="random seed. \
                                                             default: None")
-    parser.add_argument("--train_prop",default=0.9,type=float,
+    parser.add_argument("--train_prop",default=0.6,type=float,
                         help="proportion of samples to use for training \
                             (vs validation). default: 0.9")
     parser.add_argument("--search_network_sizes",default=True,action="store_true",
@@ -91,6 +92,8 @@ def parse_arguments():
                         help="generate an interactive scatterplot of the latent space. requires --metadata. Run python scripts/plotvae.py --h for customizations")
     parser.add_argument("--metadata",default=None,
                         help="path to tab-delimited metadata file with column 'sampleID'.")
+    parser.add_argument("--generators",default=False,action="store_true",
+                        help="Create train/testing hdf5 files and stream data in from them using a Keras DataGenerator")
     args=parser.parse_args()
     
 
@@ -187,6 +190,62 @@ def load_hdf5(infile):
 
     return dc, samples
 
+def save_hdf5(infile, dc, samples):
+    """Saved h5 file for re-analysis
+
+    Args:
+        infile (str): Filename of input file
+        dc (ndarray): Derived counts, filtered, imputed 
+        samples (ndarray): Samples
+    """
+    #save hdf5 for reanalysis
+    print("saving derived counts for reanalysis")
+    outfile=h5py.File(infile+".popvae.hdf5", "w")
+
+    outfile.create_dataset("derived_counts", data=dc, dtype='i8')
+    outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
+    outfile.close()
+
+def create_partitioned_hdf5(infile, trainsamples, testsamples, traingen, testgen):
+    """Saved h5 files for generators, 2 files generated
+
+    Args:
+        infile (str): Filename of input file
+        trainsamples (ndarray): Sample labels for training 
+        testsamples (ndarray): Sample labels for testing 
+        traingen (ndarray): Genotypes for training
+        testgen (ndarray): Genotypes for testing
+    """
+    #save hdf5 for reanalysis
+    print("saving derived counts for reanalysis")
+
+    train_outfile=h5py.File("training_" + infile + ".popvae.hdf5", "w")
+    train_outfile.create_dataset("derived_counts", data=traingen, dtype='i8')
+    train_outfile.close()
+
+    test_outfile=h5py.File("testing_" + infile + ".popvae.hdf5", "w")
+    test_outfile.create_dataset("derived_counts", data=testgen, dtype='i8')
+    test_outfile.close()
+
+def create_data_generators(user_args):
+    """Creates Keras DataGenerators 
+
+    Args:
+        user_args (dict): User input arguments to script
+
+    Returns:
+        train_generator/test_generator: DataGenerator objects with training/testing data 
+        train_h5/test_h5: h5 file handler objects, need to stay open while generating
+    """
+    train_h5 = h5py.File("training_" + user_args.infile + ".popvae.hdf5", 'r')
+    train_generator = DataGenerator(train_h5, user_args.batch_size)
+
+    test_h5 = h5py.File("testing_" + user_args.infile + ".popvae.hdf5", 'r')
+    test_generator = DataGenerator(test_h5, user_args.batch_size)
+
+
+    return train_generator, test_generator, train_h5, test_h5
+
 def get_allele_counts(gen, infile):
     """Gets allele counts per-snp and per-snp-per-individual from genotypes
 
@@ -273,25 +332,6 @@ def impute_dc(dc, dc_all, missingness, ninds):
     dc=dc*0.5 #0=homozygous reference, 0.5=heterozygous, 1=homozygous alternate
 
     return dc
-
-def save_hdf5(infile, prune_LD, dc, samples):
-    """Saved h5 file for re-analysis
-
-    Args:
-        infile (str): Filename of input file
-        prune_LD (bool): Whether to prune LD or not
-        dc (ndarray): Derived counts, filtered, imputed 
-        samples (ndarray): Samples
-    """
-    #save hdf5 for reanalysis
-    print("saving derived counts for reanalysis")
-    if prune_LD:
-        outfile=h5py.File(infile+".LDpruned.popvae.hdf5", "w")
-    else:
-        outfile=h5py.File(infile+".popvae.hdf5", "w")
-    outfile.create_dataset("derived_counts", data=dc)
-    outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
-    outfile.close()
 
 def subset_to_max_snps(max_SNPs, dc):
     """Subsets SNPs to maximum desired count
@@ -428,7 +468,7 @@ def create_vae(traingen, width, depth, latent_dim):
 
     return vae, encoder, input_seq
 
-def train_model(vae, encoder, dc, samples, traingen, testgen, user_args):
+def train_model(vae, encoder, dc, samples, traingen, testgen, train_generator, test_generator, user_args):
     """Trains given VAE model
 
     Args:
@@ -438,6 +478,8 @@ def train_model(vae, encoder, dc, samples, traingen, testgen, user_args):
         samples (ndarray): All samples
         traingen (ndarray): Training genotypes
         testgen (ndarray): Testing genotypes
+        train_generator (DataGenerator): DataGenerator object with training set
+        test_generator (DataGenerator): DataGenerator object with testing set
         user_args (dict): Dictionary of user arguments to script
 
     Returns:
@@ -478,15 +520,23 @@ def train_model(vae, encoder, dc, samples, traingen, testgen, user_args):
                             frequency=user_args.prediction_freq,
                             out=user_args.out))
 
-    t1=time.time()
-    history=vae.fit(x=traingen,
-                    y=None,
-                    shuffle=True,
-                    verbose=2,
-                    epochs=user_args.max_epochs,
-                    callbacks=[checkpointer,earlystop,reducelr,print_predictions],
-                    validation_data=(testgen,None),
-                    batch_size=user_args.batch_size)
+    t1=time.time()    
+    
+    if train_generator is not None:
+        history=vae.fit_generator(train_generator,
+                        verbose=2,
+                        epochs=user_args.max_epochs,
+                        callbacks=[checkpointer,earlystop,reducelr,print_predictions],
+                        validation_data=test_generator)
+    else:                   
+        history=vae.fit(x=traingen,
+                        y=None,
+                        shuffle=True,
+                        verbose=2,
+                        epochs=user_args.max_epochs,
+                        callbacks=[checkpointer,earlystop,reducelr,print_predictions],
+                        validation_data=(testgen,None),
+                        batch_size=user_args.batch_size)
     t2=time.time()
     vaetime=t2-t1
     print("VAE run time: "+str(vaetime)+" seconds")
@@ -534,7 +584,7 @@ def get_best_losses(param_losses, user_args):
 
     return width, depth
 
-def final_model_run(width, depth, dc, samples, traingen, testgen, train_samples, test_samples, user_args):
+def final_model_run(width, depth, dc, samples, traingen, testgen, train_samples, test_samples, train_generator, test_generator, user_args):
     """What if you're too good for grid search? Then you only run this.
     Same workflow as grid search, just leave out all the reparameterizations
 
@@ -547,6 +597,8 @@ def final_model_run(width, depth, dc, samples, traingen, testgen, train_samples,
         testgen (ndarray): Testing genotypes
         train_samples (ndarray): Training samples
         test_samples (ndarray): Testing samples
+        train_generator (DataGenerator): DataGenerator object with training set
+        test_generator (DataGenerator): DataGenerator object with testing set
         user_args (dict): Dictionary with user arguments to script
 
     Returns:
@@ -559,14 +611,14 @@ def final_model_run(width, depth, dc, samples, traingen, testgen, train_samples,
    
     t1=time.time()
 
-    history, vae, vaetime = train_model(vae, encoder, dc, samples, traingen, testgen, user_args)
-    
+    history, vae, vaetime = train_model(vae, encoder, dc, samples, traingen, testgen, train_generator, test_generator, user_args)
+
     t2 = time.time()
     vatime = t2-t1
 
     return history, vae, vaetime
 
-def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, user_args):
+def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, train_generator, test_generator, user_args):
     """Grid search through network parameterizations
     - Iterates through next set of parameters
     - Creates net
@@ -579,7 +631,8 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, use
         testgen (ndarray): Testing genotypes
         train_samples (ndarray): Training samples
         test_samples (ndarray): Testing samples
-        latent_dim (int): Number of latent dimensions
+        train_generator (DataGenerator): DataGenerator object with training set
+        test_generator (DataGenerator): DataGenerator object with testing set
         user_args (dict): Dictionary with user arguments to script
 
     Returns:
@@ -612,8 +665,10 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, use
     
         t1=time.time()
 
-        history, vae, vaetime = train_model(vae, encoder, dc, samples, traingen, testgen, user_args)
+        history, vae, vaetime = train_model(vae, encoder, dc, samples, traingen, testgen, train_generator, test_generator, user_args)
         param_losses = append_min_losses(history, width, depth, param_losses)
+
+        K.clear_session()
 
     best_width, best_depth = get_best_losses(param_losses, user_args)
 
@@ -645,7 +700,7 @@ def predict_latent_coords(dc, samples, traingen, width, depth, user_args):
     vae, encoder, input_seq = create_vae(traingen, width, depth, user_args.latent_dim)
 
     #predict latent space coords for all samples from weights minimizing val loss
-    vae.load_weights(user_args.out+"_weights.hdf5")
+    vae.load_weights(user_args.out+"_weights.hdf5") # Would probably be more efficient to just pass the fitted model, same goes for grid search
     pred=encoder.predict(dc,batch_size=user_args.batch_size) #returns [mean,sd,sample] for individual distributions in latent space
     p=pd.DataFrame()
     if user_args.latent_dim==2:
@@ -726,11 +781,34 @@ def run_plotter(out, metadata):
     subprocess.run("python scripts/plotvae.py --latent_coords "+out+'_latent_coords.txt'+' --metadata '+metadata,shell=True)
 
 def main():
+    """Workflow
+    1. Load genotypes from whichever file type is being given
+    2. Train/test split
+    3a. Optionally create datagenerators and run workflow using generators
+    3b. Skip generator creation and continue using raw data given by file
+    4. Grid search if option, get best width/depth
+    5. Final model training with longer train time than grid search epochs
+    6. Save history
+    6a. Close h5 files if generators used
+    7. Predict latent coordinates
+    8. Run PCA
+    9. Run plotting, save data if toggled (maybe tweak these?)
 
+    TODO: Think about creating new folders for txt/csv outputs, working dir gets messy
+    TODO: Check plotting and PCA
+    """
     user_args = parse_arguments()
 
     #OS Side settings and random seeds
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     os.environ["CUDA_VISIBLE_DEVICES"]=user_args.gpu_number
+    gpus = tensorflow.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tensorflow.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            print(e)
 
     if not user_args.seed==None:
         os.environ['PYTHONHASHSEED']=str(user_args.seed)
@@ -742,17 +820,45 @@ def main():
     dc, samples = load_genotypes(user_args.infile, user_args.max_SNPs)
     train_samples, test_samples, traingen, testgen = split_training_data(dc, samples, user_args.train_prop)
 
-    if user_args.search_network_sizes: #Grid search
-        # Should reduce the parameterization of this function, but it's handy for now
-        print("Grid Search")
-        best_width, best_depth = grid_search(dc, samples, traingen, testgen, train_samples, test_samples, user_args)
-    else:
-        best_width = user_args.width
-        best_depth = user_args.depth   
+    # If big enough file, use generators and it does it for all training
+    if user_args.generators:
+        create_partitioned_hdf5(user_args.infile, train_samples, test_samples, traingen, testgen) # This seems inefficient but not loading hdf5 sets into memory is useful for batching
 
-    print("Final Model")
-    history, vae, vaetime = final_model_run(best_width, best_depth, dc, samples, traingen, testgen, train_samples, test_samples, user_args)
-    save_training_history(history, user_args.out)
+        train_generator, test_generator, train_h5_file, test_h5_file = create_data_generators(user_args)
+        if user_args.search_network_sizes: #Grid search
+            # Should reduce the parameterization of this function, but it's handy for now
+            print("Grid Search")
+            best_width, best_depth = grid_search(dc, samples, traingen, testgen, train_samples, test_samples, train_generator, test_generator, user_args)
+
+        else:
+            best_width = user_args.width
+            best_depth = user_args.depth
+
+        train_generator, test_generator, train_h5_file, test_h5_file = create_data_generators(user_args)
+
+        history, vae, vaetime = final_model_run(best_width, best_depth, dc, samples, traingen, testgen, train_samples, test_samples, train_generator, test_generator, user_args)
+        save_training_history(history, user_args.out)
+
+        train_h5_file.close()
+        test_h5_file.close()
+
+    # If don't need generators go here. Could theoretically use them for every size of sample but keeping this here for optionality if people don't want to write hdf5 files
+    else:
+        train_generator = None
+        test_generator = None
+
+        if user_args.search_network_sizes: #Grid search
+            # Should reduce the parameterization of this function, but it's handy for now
+            print("Grid Search")
+            best_width, best_depth = grid_search(dc, samples, traingen, testgen, train_samples, test_samples, user_args)
+        else:
+            best_width = user_args.width
+            best_depth = user_args.depth   
+
+        print("Final Model")
+        history, vae, vaetime = final_model_run(best_width, best_depth, dc, samples, traingen, testgen, train_samples, test_samples, train_generator, test_generator, user_args)
+        save_training_history(history, user_args.out)
+
     predict_latent_coords(dc, samples, traingen, best_width, best_depth, user_args)
 
     if user_args.PCA:
@@ -766,7 +872,7 @@ def main():
         subprocess.check_output(['rm',user_args.out+"_weights.hdf5"])
 
     if user_args.save_allele_counts and not user_args.infile.endswith('.popvae.hdf5'):
-        save_hdf5(user_args.infile, True, dc, samples) 
+        save_hdf5(user_args.infile, dc, samples) 
         #I have no idea where prune_LD is coming from, so setting it to default True for now
 
 if __name__ == "__main__":
