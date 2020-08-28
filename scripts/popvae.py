@@ -166,8 +166,10 @@ def load_vcf(infile):
     Returns:
         genotype array: allel Genotype array object
         samples
+
+    TODO Optimize this somehow, maybe convert to H5 first then pull from that?
     """
-    vcf=allel.read_vcf(infile,log=sys.stderr)
+    vcf=allel.read_vcf(infile, fields=['calldata/GT', 'samples'], log=sys.stderr)
     gen=allel.GenotypeArray(vcf['calldata/GT'])
     samples=vcf['samples']
 
@@ -203,7 +205,6 @@ def save_hdf5(infile, dc, samples):
     outfile=h5py.File(infile+".popvae.hdf5", "w")
 
     outfile.create_dataset("derived_counts", data=dc, dtype='i8')
-    outfile.create_dataset("samples", data=samples,dtype=h5py.string_dtype()) #requires h5py >= 2.10.0
     outfile.close()
 
 def create_partitioned_hdf5(infile, trainsamples, testsamples, traingen, testgen):
@@ -219,11 +220,11 @@ def create_partitioned_hdf5(infile, trainsamples, testsamples, traingen, testgen
     #save hdf5 for reanalysis
     print("Saving derived counts for reanalysis \n")
 
-    train_outfile=h5py.File("training_" + infile + ".popvae.hdf5", "w")
+    train_outfile=h5py.File(infile + "_training.popvae.hdf5", "w")
     train_outfile.create_dataset("derived_counts", data=traingen, dtype='i8')
     train_outfile.close()
 
-    test_outfile=h5py.File("testing_" + infile + ".popvae.hdf5", "w")
+    test_outfile=h5py.File(infile + "_testing.popvae.hdf5", "w")
     test_outfile.create_dataset("derived_counts", data=testgen, dtype='i8')
     test_outfile.close()
 
@@ -237,10 +238,10 @@ def create_data_generators(user_args):
         train_generator/test_generator: DataGenerator objects with training/testing data 
         train_h5/test_h5: h5 file handler objects, need to stay open while generating
     """
-    train_h5 = h5py.File("training_" + user_args.infile + ".popvae.hdf5", 'r')
+    train_h5 = h5py.File(user_args.infile + "_training.popvae.hdf5", 'r')
     train_generator = DataGenerator(train_h5, user_args.batch_size)
 
-    test_h5 = h5py.File("testing_" + user_args.infile + ".popvae.hdf5", 'r')
+    test_h5 = h5py.File(user_args.infile + "_testing.popvae.hdf5", 'r')
     test_generator = DataGenerator(test_h5, user_args.batch_size)
 
 
@@ -259,7 +260,7 @@ def get_allele_counts(gen, infile):
     """
     #snp filters
     if not infile.endswith('.popvae.hdf5'):
-        print("counting alleles \n")
+        print("\nCounting alleles \n")
         ac_all=gen.count_alleles() #count of alleles per snp
         ac=gen.to_allele_counts() #count of alleles per snp per individual
 
@@ -299,6 +300,8 @@ def drop_singletons(missingness, dc_all, dc):
         dc_all: derived counts all, without singletons
         missingness: without singletons
         ninds: indices of everything not singleton
+
+    #TODO Make generators more efficient by just doing matrix math
     """
     print("Dropping singletons \n")
     ninds=np.array([np.sum(x) for x in ~missingness])
@@ -324,7 +327,7 @@ def impute_dc(dc, dc_all, missingness, ninds):
     """
     print("Filling missing data with rbinom(2,derived_allele_frequency) \n")
     af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])])
-    for i in tqdm(range(np.shape(dc)[1])):
+    for i in tqdm(range(np.shape(dc)[1]), position=0, leave=True):
         indmiss=missingness[:,i]
         dc[indmiss,i]=np.random.binomial(2,af[indmiss])
 
@@ -656,7 +659,7 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, tra
     param_losses['val_loss']=None
 
     #params=paramsets[0]
-    for params in tqdm(paramsets):
+    for params in tqdm(paramsets, position=0, leave=True):
         width=params[0]
         depth=params[1]
         print('width='+str(width)+'\ndepth='+str(depth)+" \n")
@@ -802,6 +805,7 @@ def main():
     #OS Side settings and random seeds
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     os.environ["CUDA_VISIBLE_DEVICES"]=user_args.gpu_number
+
     gpus = tensorflow.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
