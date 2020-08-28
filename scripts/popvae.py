@@ -112,8 +112,8 @@ def load_genotypes(infile, max_SNPs):
         max_SNPs (int): Maximum number of snps to subset to
 
     Returns:
-        ndarray: dc, Derived counts
-        ndarray: samples, sample array
+        dc: Derived counts
+        samples: sample array
     """
     print("\nLoading Genotypes")
     if infile.endswith('.zarr'):
@@ -144,8 +144,8 @@ def load_zarr(infile):
         infile (str): Filename
 
     Returns:
-        gen: genotype array
-        ndarray: samples
+        genotype array
+        samples
     """
     callset = zarr.open_group(infile, mode='r')
     gt = callset['calldata/GT']
@@ -162,7 +162,7 @@ def load_vcf(infile):
 
     Returns:
         genotype array: allel Genotype array object
-        ndarray: samples
+        samples
     """
     vcf=allel.read_vcf(infile,log=sys.stderr)
     gen=allel.GenotypeArray(vcf['calldata/GT'])
@@ -177,8 +177,8 @@ def load_hdf5(infile):
         infile (str): Filename
 
     Returns:
-        ndarray: derived counts
-        ndarray: samples
+        dc: derived counts
+        samples
     """
     h5=h5py.File(infile,'r')
     dc=np.array(h5['derived_counts'])
@@ -193,9 +193,10 @@ def get_allele_counts(gen, infile):
     Args:
         gen (genotype array): allel genotype array object
         infile (str): input file
+
     Returns:
-        ndarray: ac, allele count array per snp
-        ndarray: ac_all, allele count array per snp per individual
+        ac: allele count array per snp
+        ac_all: allele count array per snp per individual
     """
     #snp filters
     if not infile.endswith('.popvae.hdf5'):
@@ -212,10 +213,11 @@ def drop_non_biallelic_sites(ac, ac_all, gen):
         ac (ndarray): individual snps
         ac_all (ndarray): individual snps per individual
         gen (genotype array): allel genotype array
+
     Returns:
-        ndarray: Biallelic sites that are missing from dataset
-        ndarray: Derived counts with just biallelic sites
-        ndarray: Derived counts from all individs
+       missingness: Biallelic sites that are missing from dataset
+        dc: Derived counts with just biallelic sites
+        dc_all: Derived counts from all individs
     """
     print("Dropping non-biallelic sites")
     biallel=ac_all.is_biallelic()
@@ -234,9 +236,9 @@ def drop_singletons(missingness, dc_all, dc):
         dc (ndarray): Derived counts
 
     Returns:
-        ndarray: derived counts, without singletons
-        ndarray: derived counts all, without singletons
-        ndarray: missingness, without singletons
+        dc: derived counts, without singletons
+        dc_all: derived counts all, without singletons
+        missingness: without singletons
         ninds: indices of everything not singleton
     """
     print("Dropping singletons")
@@ -257,8 +259,9 @@ def impute_dc(dc, dc_all, missingness, ninds):
         dc_all (ndarray): Derived counts per snp per person
         missingness (ndarray): Missing counts
         ninds (ndarray): Indices of non-singleton locations
+
     Returns:
-        ndarray: derived counts, filled with imputed data
+        dc: derived counts, filled with imputed data
     """
     print("Filling missing data with rbinom(2,derived_allele_frequency)")
     af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])])
@@ -298,7 +301,7 @@ def subset_to_max_snps(max_SNPs, dc):
         dc (ndarray): Derived counts
 
     Returns:
-        ndarray: derived counts, filtered to only be length of max_snps
+        dc: derived counts, filtered to only be length of max_snps
     """
     if not max_SNPs==None:
         print("subsetting to "+str(max_SNPs)+" SNPs")
@@ -316,8 +319,8 @@ def split_training_data(dc, samples, train_prop):
         train_prop (float): Percent of training proportion from whole sample
 
     Returns:
-        ndarray: Training, testing sample lists
-        ndarray: Training, testing genotype lists
+        trainsamples/testsamples: Training, testing sample lists
+        traingen/testgen: Training, testing genotype lists
     """
     print("Running train/test splits")
     ninds=dc.shape[0]
@@ -352,6 +355,7 @@ def saveLDpos(encoder, predgen, samples, batch_size, epoch, frequency, out):
         batch_size (int): Batch size
         epoch (int): Number of epochs to run predictions for
         frequency (int): How often to save predictions
+        out (str): Output file
     """
     if(epoch%frequency==0):
         pred=encoder.predict(predgen,batch_size=batch_size)[0]
@@ -381,12 +385,11 @@ def create_vae(traingen, width, depth, latent_dim):
         width (int): Width of net (number of nodes per layer)
         depth (int): Depth of net (number of layers)
         latent_dim (int): Dimensionality of latent space
-        encoder (keras model): Built encoder model to use for first half of VAE
 
     Returns:
-        keras model: VAE model
-        keras layer: Keras Input layer of shape (traingen.shape[1],)
-        keras layer: Keras output layer of shape (traingen.shape[1],) after decoder generates data
+        vae: VAE model
+        encoder: Encoder portion of vae model
+        input_seq: Keras Input layer of shape (traingen.shape[1],)
 
     The reason encoder is functionalized is because it needs to be called for a few things, 
     but decoder is only used for end-to-end vae prediction, so I'm leaving it here.
@@ -423,24 +426,25 @@ def create_vae(traingen, width, depth, latent_dim):
     vae_loss = K.mean(reconstruction_loss + kl_loss)
     vae.add_loss(vae_loss)
 
-    return vae, encoder, input_seq, output_seq
+    return vae, encoder, input_seq
 
 def train_model(vae, encoder, dc, samples, traingen, testgen, user_args):
     """Trains given VAE model
 
     Args:
         vae (keras model): Built keras model with custom loss function
-        out (str): Output filename
+        encoder (keras model): Encoder section of vae
         dc (ndarray): Derived counts
-
-        user_args.patience (int): Patience to use for early stopping of val_loss
+        samples (ndarray): All samples
         traingen (ndarray): Training genotypes
         testgen (ndarray): Testing genotypes
-        print_predictions (func): Function for callback
+        user_args (dict): Dictionary of user arguments to script
 
     Returns:
-        keras history: History object from best model
-        keras model: fitted VAE model
+        history: History object from best model
+        vae: fitted VAE model
+        vaetime: float time of train
+    
     """
     vae.compile(optimizer='adam')
 
@@ -499,7 +503,7 @@ def append_min_losses(history, width, depth, param_losses):
         param_losses (pd.df): Losses dataframe to append new minimum loss to
 
     Returns:
-        pd.df: Losses from each parameterization
+        param_losses: Losses from each parameterization
     """
     minloss=np.min(history.history['val_loss'])
     row=np.transpose(pd.DataFrame([width,depth,minloss]))
@@ -514,10 +518,11 @@ def get_best_losses(param_losses, user_args):
 
     Args:
         param_losses (dict): Dictionary of losses calculated during training
+        user_args (dict): Dictionary of user arguments to script
 
     Returns:
-        int: Width of best network
-        int: Depth of best network
+        width: Width of best network
+        depth: Depth of best network
     """
     #save tests and get min val_loss parameter set
     print(param_losses)
@@ -534,7 +539,10 @@ def final_model_run(width, depth, dc, samples, traingen, testgen, train_samples,
     Same workflow as grid search, just leave out all the reparameterizations
 
     Args:
+        width (int): Width of model (nodes per layer)
+        depth (int): Depth of model (layers)
         dc (ndarray): Derived counts
+        samples (ndarray): All samples
         traingen (ndarray): Training genotypes
         testgen (ndarray): Testing genotypes
         train_samples (ndarray): Training samples
@@ -542,11 +550,12 @@ def final_model_run(width, depth, dc, samples, traingen, testgen, train_samples,
         user_args (dict): Dictionary with user arguments to script
 
     Returns:
-        keras history: History object from best model
-        keras model: fitted VAE model
+        history: History object from best model
+        vae: fitted VAE model
+        vaetime: Time to train final model
     """
                                                                 
-    vae, encoder, input_seq, output_seq = create_vae(traingen, width, depth, user_args.latent_dim)
+    vae, encoder, input_seq = create_vae(traingen, width, depth, user_args.latent_dim)
    
     t1=time.time()
 
@@ -565,23 +574,17 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, use
     - Gets best losses and spits out optimal width and depth to use for optimal encoder
 
     Args:
-        depth_range (str): Ranges of depths to test
-        width_range (str): Range of widths to test
-        patience (int): Patience parameter for early stopping
+        dc (ndarray): Derived counts
         traingen (ndarray): Training genotypes
         testgen (ndarray): Testing genotypes
         train_samples (ndarray): Training samples
         test_samples (ndarray): Testing samples
         latent_dim (int): Number of latent dimensions
-        out (str): Output file prefix
+        user_args (dict): Dictionary with user arguments to script
 
     Returns:
-        int: Best width
-        int: Best depth
-
-    TODO: Implement OOB gridsearch here, should be pretty straightfoward to swap this over to an API
-    TODO: Optimize more than 2 hyperparameters, reliant on above for easy implementation
-
+        best_width: Best width
+        best_depth: Best depth
     """
 
     #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
@@ -605,7 +608,7 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, use
         depth=params[1]
         print('width='+str(width)+'\ndepth='+str(depth))
                                                                     
-        vae, encoder, input_seq, output_seq = create_vae(traingen, width, depth, user_args.latent_dim)
+        vae, encoder, input_seq = create_vae(traingen, width, depth, user_args.latent_dim)
     
         t1=time.time()
 
@@ -632,15 +635,14 @@ def predict_latent_coords(dc, samples, traingen, width, depth, user_args):
 
     Args:
         dc (ndarray): Derived count
-        batch_size (int): Batch size for predictions
-        latent_dim (int): Latent dimensions to predict for
         samples (ndarray): Samples
         traingen (ndarray): Training genotypes
         width (int): Width of net
         depth (int): Depth of net
+        user_args (dict): Dictionary with user arguments to script
     """
 
-    vae, encoder, input_seq, output_seq = create_vae(traingen, width, depth, user_args.latent_dim)
+    vae, encoder, input_seq = create_vae(traingen, width, depth, user_args.latent_dim)
 
     #predict latent space coords for all samples from weights minimizing val loss
     vae.load_weights(user_args.out+"_weights.hdf5")
@@ -766,8 +768,6 @@ def main():
     if user_args.save_allele_counts and not user_args.infile.endswith('.popvae.hdf5'):
         save_hdf5(user_args.infile, True, dc, samples) 
         #I have no idea where prune_LD is coming from, so setting it to default True for now
-
-
 
 if __name__ == "__main__":
     main()
