@@ -13,14 +13,14 @@ from sklearn.model_selection import train_test_split
 
 import allel
 import h5py
-import keras
 import tensorflow
 
 import zarr
-from keras import backend as K
-from keras import layers
-from keras.layers.core import Lambda
-from keras.models import Model, Sequential
+import tensorflow.keras as keras
+from tensorflow.keras import backend as K
+from tensorflow.keras import layers
+from tensorflow.keras.layers import Lambda
+from tensorflow.keras.models import Model, Sequential
 from matplotlib import pyplot as plt
 from streaming_data import DataGenerator
 from tqdm import tqdm
@@ -50,7 +50,7 @@ def parse_arguments():
                         help="save model weights to out+weights.hdf5.")
     parser.add_argument("--seed",default=None,type=int,help="random seed. \
                                                             default: None")
-    parser.add_argument("--train_prop",default=0.6,type=float,
+    parser.add_argument("--train_prop",default=0.9,type=float,
                         help="proportion of samples to use for training \
                             (vs validation). default: 0.9")
     parser.add_argument("--search_network_sizes",default=True,action="store_true",
@@ -118,7 +118,7 @@ def load_genotypes(infile, max_SNPs):
         dc: Derived counts
         samples: sample array
     """
-    print("\nLoading Genotypes")
+    print("\nLoading Genotypes \n")
     if infile.endswith('.zarr'):
         gen, samples = load_zarr(infile)
         ac, ac_all = get_allele_counts(gen, infile)
@@ -199,7 +199,7 @@ def save_hdf5(infile, dc, samples):
         samples (ndarray): Samples
     """
     #save hdf5 for reanalysis
-    print("saving derived counts for reanalysis")
+    print("Saving derived counts for reanalysis \n")
     outfile=h5py.File(infile+".popvae.hdf5", "w")
 
     outfile.create_dataset("derived_counts", data=dc, dtype='i8')
@@ -217,7 +217,7 @@ def create_partitioned_hdf5(infile, trainsamples, testsamples, traingen, testgen
         testgen (ndarray): Genotypes for testing
     """
     #save hdf5 for reanalysis
-    print("saving derived counts for reanalysis")
+    print("Saving derived counts for reanalysis \n")
 
     train_outfile=h5py.File("training_" + infile + ".popvae.hdf5", "w")
     train_outfile.create_dataset("derived_counts", data=traingen, dtype='i8')
@@ -259,7 +259,7 @@ def get_allele_counts(gen, infile):
     """
     #snp filters
     if not infile.endswith('.popvae.hdf5'):
-        print("counting alleles")
+        print("counting alleles \n")
         ac_all=gen.count_alleles() #count of alleles per snp
         ac=gen.to_allele_counts() #count of alleles per snp per individual
 
@@ -278,7 +278,7 @@ def drop_non_biallelic_sites(ac, ac_all, gen):
         dc: Derived counts with just biallelic sites
         dc_all: Derived counts from all individs
     """
-    print("Dropping non-biallelic sites")
+    print("Dropping non-biallelic sites \n")
     biallel=ac_all.is_biallelic()
     dc_all=ac_all[biallel,1] #derived alleles per snp
     dc=np.array(ac[biallel,:,1],dtype="int_") #derived alleles per individual
@@ -300,7 +300,7 @@ def drop_singletons(missingness, dc_all, dc):
         missingness: without singletons
         ninds: indices of everything not singleton
     """
-    print("Dropping singletons")
+    print("Dropping singletons \n")
     ninds=np.array([np.sum(x) for x in ~missingness])
     singletons=np.array([x<=2 for x in dc_all])
     dc_all=dc_all[~singletons]
@@ -322,7 +322,7 @@ def impute_dc(dc, dc_all, missingness, ninds):
     Returns:
         dc: derived counts, filled with imputed data
     """
-    print("Filling missing data with rbinom(2,derived_allele_frequency)")
+    print("Filling missing data with rbinom(2,derived_allele_frequency) \n")
     af=np.array([dc_all[x]/(ninds[x]*2) for x in range(dc_all.shape[0])])
     for i in tqdm(range(np.shape(dc)[1])):
         indmiss=missingness[:,i]
@@ -344,7 +344,7 @@ def subset_to_max_snps(max_SNPs, dc):
         dc: derived counts, filtered to only be length of max_snps
     """
     if not max_SNPs==None:
-        print("subsetting to "+str(max_SNPs)+" SNPs")
+        print("subsetting to "+str(max_SNPs)+" SNPs \n")
         dc=dc[:,np.random.choice(range(dc.shape[1]),max_SNPs,replace=False)]
     
     return dc
@@ -362,7 +362,7 @@ def split_training_data(dc, samples, train_prop):
         trainsamples/testsamples: Training, testing sample lists
         traingen/testgen: Training, testing genotype lists
     """
-    print("Running train/test splits")
+    print("Running train/test splits \n")
     ninds=dc.shape[0]
     if train_prop==1:
         train_inds = np.arange(ninds)
@@ -380,7 +380,7 @@ def split_training_data(dc, samples, train_prop):
         testsamples=samples[test_inds]
 
     print('Validation Samples:'+ testsamples +'\n')
-    print('Running on '+str(dc.shape[1])+" SNPs")
+    print('Running on '+str(dc.shape[1])+" SNPs \n")
 
     return trainsamples, testsamples, traingen, testgen
 
@@ -539,7 +539,7 @@ def train_model(vae, encoder, dc, samples, traingen, testgen, train_generator, t
                         batch_size=user_args.batch_size)
     t2=time.time()
     vaetime=t2-t1
-    print("VAE run time: "+str(vaetime)+" seconds")
+    print("VAE run time: "+str(vaetime)+" seconds \n")
 
     return history, vae, vaetime
 
@@ -575,12 +575,12 @@ def get_best_losses(param_losses, user_args):
         depth: Depth of best network
     """
     #save tests and get min val_loss parameter set
-    print(param_losses)
+    print(param_losses, " \n")
     param_losses.to_csv(user_args.out+"_param_grid.csv",index=False,header=True)
     bestparams=param_losses[param_losses['val_loss']==np.min(param_losses['val_loss'])]
     width=int(bestparams['width'])
     depth=int(bestparams['depth'])
-    print('Best parameters:\nWidth = '+str(width)+'\nDepth = '+str(depth))
+    print('Best parameters:\nWidth = '+str(width)+'\nDepth = '+str(depth)+ " \n")
 
     return width, depth
 
@@ -642,7 +642,7 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, tra
 
     #grid search on network sizes. Getting OOM errors on 256 networks when run in succession -- GPU memory not clearing on new compile? unclear.
     #Wonder if switching to something pre-written would help? Talos, for example?
-    print('Running grid search on network sizes')
+    print('Running grid search on network sizes \n')
     user_args.patience = user_args.patience / 4
 
     #get parameter combinations (will need to rework this for >2 params)
@@ -659,7 +659,7 @@ def grid_search(dc, samples, traingen, testgen, train_samples, test_samples, tra
     for params in tqdm(paramsets):
         width=params[0]
         depth=params[1]
-        print('width='+str(width)+'\ndepth='+str(depth))
+        print('width='+str(width)+'\ndepth='+str(depth)+" \n")
                                                                     
         vae, encoder, input_seq = create_vae(traingen, width, depth, user_args.latent_dim)
     
@@ -728,7 +728,7 @@ def run_PCA(dc, PCA_scaler, n_pc_axes):
     """
     pcdata=np.transpose(dc)
     t1=time.time()
-    print("running PCA")
+    print("Running PCA \n")
     pca=allel.pca(pcdata,scaler=PCA_scaler,n_components=n_pc_axes)
     pca=pd.DataFrame(pca[0])
     colnames=['PC'+str(x+1) for x in range(n_pc_axes)]
@@ -737,7 +737,7 @@ def run_PCA(dc, PCA_scaler, n_pc_axes):
     pca.to_csv(out+"_pca.txt",index=False,sep="\t")
     t2=time.time()
     pcatime=t2-t1
-    print("PCA run time: "+str(pcatime)+" seconds")
+    print("PCA run time: "+str(pcatime)+" seconds \n")
 
     return pcatime
 
