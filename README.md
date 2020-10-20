@@ -13,6 +13,7 @@ Popvae requires python 3.7 and tensorflow 1.15. We recommend you first install m
 Clone this repo and install with: 
 ```
 conda create --name popvae python=3.7.7
+conda activate popvae
 git clone https://github.com/cjbattey/popvae.git
 cd popvae
 python setup.py install
