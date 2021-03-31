@@ -13,9 +13,9 @@ setup(name='popvae',
       author_email='cbattey2@uoregon.edu',
       license='NPOSL-3.0',
       packages=find_packages(exclude=[]),
-      install_requires=["numpy<1.19.0",
+      install_requires=["numpy==1.18.1",
                         "h5py==2.10.0",
-                        "scikit-allel==1.3.1",
+                        "scikit-allel",
                         "matplotlib",
                         "scipy",
                         "keras==2.3.1",
@@ -26,5 +26,5 @@ setup(name='popvae',
                         "bokeh"],
       scripts=["scripts/popvae.py","scripts/plotvae.py"],
       zip_safe=False,
-      setup_requires=["numpy"]
+      setup_requires=["oldest-supported-numpy"]
 )
