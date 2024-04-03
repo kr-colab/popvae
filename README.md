@@ -8,21 +8,23 @@ popVAE fits a variational autoencoder (VAE) to a set of genotypes and outputs th
 A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at https://doi.org/10.1101/2020.08.12.248278 
 
 # Install
-Popvae requires python 3.7 and tensorflow 1.15. We recommend you first install miniconda3 (https://docs.conda.io/en/latest/miniconda.html), then install in a new environment. 
+Popvae requires python 3.10 and tensorflow 2.15. We recommend installing in a virtual environment
+with conda/mamba (try the latest miniforge3 release: https://github.com/conda-forge/miniforge).  
 
 Clone this repo and install with: 
 ```
-conda create --name popvae python=3.7.7
+conda create --name popvae python=3.10
 conda activate popvae
-git clone https://github.com/cjbattey/popvae.git
+git clone https://github.com/kr-colab/popvae.git
 cd popvae
-python setup.py install
+pip install --upgrade pip
+pip install ./
 ```
 
 # Run
 popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a small test dataset of ddRADseq genotypes from migratory Painted Buntings (from https://www.journals.uchicago.edu/doi/10.1086/695439). Fit a model with: 
   
-  ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42```
+  ```python popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --patience 300```
 
 It should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU.
 
@@ -56,7 +58,7 @@ popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
 # Plotting
 Using the optional `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
 
-```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
+```python popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
 
 Should cause a plot like this to open in your default web browser: 
 <p align="center">
