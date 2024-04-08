@@ -66,6 +66,9 @@ Should cause a plot like this to open in your default web browser:
 </p>
 
 You can (slightly) customize this plot with the `plotvae.py` script. See options with `python scripts/plotvae.py --h`. 
+To color points by the "k2pop" column of `data/pabu/pabu_test_sample_data.txt`, try:
+
+```python scripts/plotvae.py --latent_coords out/pabu_latent_coords.txt --metadata data/pabu/pabu_test_sample_data.txt --colorby k2pop```
 
 Alternately, simple scatter plots can be produced in R with:  
 ``` 
