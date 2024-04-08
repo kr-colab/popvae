@@ -126,6 +126,12 @@ parser.add_argument(
                           default: Patterson. See documentation of allel.pca for further information.",
 )
 parser.add_argument(
+    "--test",
+    default=False,
+    action="store_true",
+    help="fit with the test data",
+)
+parser.add_argument(
     "--plot",
     default=False,
     action="store_true",
@@ -159,11 +165,19 @@ n_pc_axes = args.n_pc_axes
 search_network_sizes = args.search_network_sizes
 plot = args.plot
 metadata = args.metadata
+test = args.test
 
 depth_range = args.depth_range
 depth_range = np.array([int(x) for x in re.split(",", depth_range)])
 width_range = args.width_range
 width_range = np.array([int(x) for x in re.split(",", width_range)])
+
+if test:
+    subprocess.run(
+        "python popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42",
+        shell=True
+    )
+    exit()
 
 if args.plot:
     if args.metadata == None:
