@@ -176,7 +176,7 @@ if not seed == None:
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
-    tensorflow.set_random_seed(seed)
+    tensorflow.random.set_seed(seed)
 
 print("\nloading genotypes")
 if infile.endswith(".zarr"):
