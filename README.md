@@ -21,6 +21,13 @@ pip install --upgrade pip
 pip install ./
 ```
 
+And test with:
+```python popvae.py --test```
+you should see a series of log messages while the model fits and end up with new model outputs in
+the `out/` folder.
+
+If you run in to errors in installation or running the test, please file an issue on github.
+
 # Run
 popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a small test dataset of ddRADseq genotypes from migratory Painted Buntings (from https://www.journals.uchicago.edu/doi/10.1086/695439). Fit a model with: 
   
@@ -49,10 +56,10 @@ Default settings work well on most datasets, but validation loss can usually be 
 
 To run a grid search over a specific set of network sizes with increased patience and a larger validation set on the test data, use: 
 ```
-popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
---out out/pabu_test --seed 42 --patience 300 \
+python popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
+--out out/pabu --seed 12345 \
 --search_network_sizes --width_range 32,256,512 \
---depth_range 3,5,8 --train_prop 0.75
+--depth_range 3,5,8 --train_prop 0.7
 ```
 
 # Plotting

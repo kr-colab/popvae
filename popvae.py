@@ -280,12 +280,7 @@ if search_network_sizes:
     paramsets = [[x, y] for x in width_range for y in depth_range]
 
     # output dataframe
-    param_losses = pd.DataFrame()
-    param_losses["width"] = None
-    param_losses["depth"] = None
-    param_losses["val_loss"] = None
-
-    # params=paramsets[0]
+    param_losses = []
     for params in tqdm(paramsets):
         tmpwidth = params[0]
         tmpdepth = params[1]
@@ -337,14 +332,6 @@ if search_network_sizes:
 
         vae.compile(optimizer="adam")
 
-        checkpointer = keras.callbacks.ModelCheckpoint(
-            filepath=out + "_weights.hdf5",
-            verbose=0,
-            save_best_only=True,
-            monitor="val_loss",
-            period=1,
-        )
-
         earlystop = keras.callbacks.EarlyStopping(
             monitor="val_loss", min_delta=0, patience=tmp_patience
         )
@@ -365,21 +352,26 @@ if search_network_sizes:
             shuffle=True,
             verbose=0,
             epochs=int(max_epochs / 4),
-            callbacks=[checkpointer, earlystop, reducelr],
+            callbacks=[earlystop, reducelr],
             validation_data=(testgen, None),
             batch_size=batch_size,
         )
-        minloss = np.min(history.history["val_loss"])
-        row = np.transpose(pd.DataFrame([tmpwidth, tmpdepth, minloss]))
-        row.columns = ["width", "depth", "val_loss"]
-        param_losses = param_losses.append(row, ignore_index=True)
+        
+        # append loss for this parameter set
+        param_losses.append({
+            'width':tmpwidth,
+            'depth':tmpdepth,
+            'val_loss':np.min(history.history["val_loss"])
+        })
+            
         K.clear_session()  # maybe solves the gpu memory issue(???)
 
     # save tests and get min val_loss parameter set
+    param_losses=pd.DataFrame(param_losses)
     print(param_losses)
     param_losses.to_csv(out + "_param_grid.csv", index=False, header=True)
     bestparams = param_losses[
-        param_losses["val_loss"] == np.min(param_losses["val_loss"])
+        param_losses["val_loss"] == np.nanmin(param_losses["val_loss"])
     ]
     width = int(bestparams["width"])
     depth = int(bestparams["depth"])

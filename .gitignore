@@ -3,3 +3,5 @@
 *_training_preds.txt
 *_history.pdf
 scripts/plotvae.html
+out/*
+*weights.hdf5
