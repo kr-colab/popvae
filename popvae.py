@@ -175,7 +175,7 @@ width_range = np.array([int(x) for x in re.split(",", width_range)])
 if test:
     subprocess.run(
         "python popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42",
-        shell=True
+        shell=True,
     )
     exit()
 
@@ -356,18 +356,20 @@ if search_network_sizes:
             validation_data=(testgen, None),
             batch_size=batch_size,
         )
-        
+
         # append loss for this parameter set
-        param_losses.append({
-            'width':tmpwidth,
-            'depth':tmpdepth,
-            'val_loss':np.min(history.history["val_loss"])
-        })
-            
+        param_losses.append(
+            {
+                "width": tmpwidth,
+                "depth": tmpdepth,
+                "val_loss": np.min(history.history["val_loss"]),
+            }
+        )
+
         K.clear_session()  # maybe solves the gpu memory issue(???)
 
     # save tests and get min val_loss parameter set
-    param_losses=pd.DataFrame(param_losses)
+    param_losses = pd.DataFrame(param_losses)
     print(param_losses)
     param_losses.to_csv(out + "_param_grid.csv", index=False, header=True)
     bestparams = param_losses[
