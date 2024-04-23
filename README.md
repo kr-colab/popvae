@@ -8,21 +8,30 @@ popVAE fits a variational autoencoder (VAE) to a set of genotypes and outputs th
 A manuscript describing popVAE's methods and testing it on several empirical datasets can be found at https://doi.org/10.1101/2020.08.12.248278 
 
 # Install
-Popvae requires python 3.7 and tensorflow 1.15. We recommend you first install miniconda3 (https://docs.conda.io/en/latest/miniconda.html), then install in a new environment. 
+Popvae requires python 3.10 and tensorflow 2.15. We recommend installing in a virtual environment
+with conda/mamba (try the latest miniforge3 release: https://github.com/conda-forge/miniforge).  
 
 Clone this repo and install with: 
 ```
-conda create --name popvae python=3.7.7
+conda create --name popvae python=3.10
 conda activate popvae
-git clone https://github.com/cjbattey/popvae.git
+git clone https://github.com/kr-colab/popvae.git
 cd popvae
-python setup.py install
+pip install --upgrade pip
+pip install ./
 ```
+
+And test with:
+```python popvae.py --test```
+you should see a series of log messages while the model fits and end up with new model outputs in
+the `out/` folder.
+
+If you run in to errors in installation or running the test, please file an issue on github.
 
 # Run
 popVAE requires input genotypes in .vcf, .vcf.gz, or .zarr formats. This repo includes a small test dataset of ddRADseq genotypes from migratory Painted Buntings (from https://www.journals.uchicago.edu/doi/10.1086/695439). Fit a model with: 
   
-  ```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42```
+  ```python popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --patience 300```
 
 It should fit in less than a minute on a regular laptop CPU. For running on larger datasets we recommend using a CUDA-enabled GPU.
 
@@ -47,16 +56,16 @@ Default settings work well on most datasets, but validation loss can usually be 
 
 To run a grid search over a specific set of network sizes with increased patience and a larger validation set on the test data, use: 
 ```
-popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
---out out/pabu_test --seed 42 --patience 300 \
+python popvae.py --infile data/pabu/pabu_test_genotypes.vcf \
+--out out/pabu --seed 12345 \
 --search_network_sizes --width_range 32,256,512 \
---depth_range 3,5,8 --train_prop 0.75
+--depth_range 3,5,8 --train_prop 0.7
 ```
 
 # Plotting
 Using the optional `--plot` and `--metadata` options will generate an interactive scatterplot with metadata for each sample visible on mouseover. Running the test data with
 
-```popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
+```python popvae.py --infile data/pabu/pabu_test_genotypes.vcf --out out/pabu_test --seed 42 --plot --metadata data/pabu/pabu_test_sample_data.txt```
 
 Should cause a plot like this to open in your default web browser: 
 <p align="center">
@@ -64,6 +73,9 @@ Should cause a plot like this to open in your default web browser:
 </p>
 
 You can (slightly) customize this plot with the `plotvae.py` script. See options with `python scripts/plotvae.py --h`. 
+To color points by the "k2pop" column of `data/pabu/pabu_test_sample_data.txt`, try:
+
+```python scripts/plotvae.py --latent_coords out/pabu_latent_coords.txt --metadata data/pabu/pabu_test_sample_data.txt --colorby k2pop```
 
 Alternately, simple scatter plots can be produced in R with:  
 ``` 

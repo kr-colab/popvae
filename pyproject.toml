@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "popvae"
+version = "1.1"
+authors = [
+  { name="CJ Battey, Gabrielle Coffing, Andrew Kern", email="cjbattey@gmail.com" },
+]
+description = "A variational autoencoder for visualizing population structure from genotypes"
+readme = "README.md"
+requires-python = ">=3.8"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "numpy",
+    "h5py",
+    "scikit-allel",
+    "matplotlib",
+    "scipy",
+    "keras==2.15",
+    "tensorflow==2.15",
+    "tqdm",
+    "pandas",
+    "zarr",
+    "bokeh",
+    ]
+
+[project.urls]
+Homepage = "https://github.com/kr-colab/popvae"
+Issues = "https://github.com/kr-colab/popvae/issues"

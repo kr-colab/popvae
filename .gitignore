@@ -1,0 +1,7 @@
+*_history.txt
+*_latent_coords.txt
+*_training_preds.txt
+*_history.pdf
+scripts/plotvae.html
+out/*
+*weights.hdf5
