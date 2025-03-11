@@ -23,7 +23,7 @@ dependencies = [
     "scikit-allel",
     "matplotlib",
     "scipy",
-    "keras==2.15",
+    "keras==3.9.0",
     "tensorflow==2.15",
     "tqdm",
     "pandas",
